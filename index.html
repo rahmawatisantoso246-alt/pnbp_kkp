@@ -1,0 +1,4066 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Monev Realisasi Anggaran & PNBP KKP</title>
+  <!-- Google Fonts -->
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js">
+    // Generate dynamic insights
+    function generateInsights() {
+      // Tab 1 (Rekap) Insight
+      const filteredMaster = getFilteredMasterData();
+      if (filteredMaster.length === 0) {
+        document.getElementById('ai-insight-rekap').innerText = "Belum ada data untuk filter yang dipilih.";
+      } else {
+        let totals = { satker: {}, akun: {}, jenis: {} };
+        filteredMaster.forEach(d => {
+          let val = d[5] || 0;
+          let s = d[3];
+          let a = d[4];
+          let j = classifyRow(d).cat6;
+
+          if (!totals.satker[s]) totals.satker[s] = 0;
+          totals.satker[s] += val;
+
+          if (!totals.akun[a]) totals.akun[a] = 0;
+          totals.akun[a] += val;
+
+          if (!totals.jenis[j]) totals.jenis[j] = 0;
+          totals.jenis[j] += val;
+        });
+
+        const topSatkerCode = Object.keys(totals.satker).reduce((a, b) => totals.satker[a] > totals.satker[b] ? a : b, "");
+        const topAkunCode = Object.keys(totals.akun).reduce((a, b) => totals.akun[a] > totals.akun[b] ? a : b, "");
+        const topJenis = Object.keys(totals.jenis).reduce((a, b) => totals.jenis[a] > totals.jenis[b] ? a : b, "");
+
+        const topSatkerName = SATKER_MAP[topSatkerCode] || topSatkerCode;
+        const topAkunName = AKUN_MAP[topAkunCode] || topAkunCode;
+
+        const textRekap = `<strong>Analisis Ringkas:</strong> Berdasarkan data terpilih (Tahun ${activeFilters.tahun.join(', ')}), kontributor terbesar berasal dari jenis <strong>${topJenis}</strong>, disumbangkan mayoritas oleh <strong>Satker ${topSatkerName}</strong> melalui <strong>Akun ${topAkunName}</strong>.`;
+        document.getElementById('ai-insight-rekap').innerHTML = textRekap;
+      }
+
+      // Tab 2 (Capaian) Insight
+      const filteredCapaian = capaian2026Data.filter(d => {
+        const passEs1 = !activeFilters.es1 || d[0] === activeFilters.es1;
+        const passSatker = !activeFilters.satker || d[1] === activeFilters.satker;
+        const passAkun = !activeFilters.akun || d[2] === activeFilters.akun;
+        return passEs1 && passSatker && passAkun;
+      });
+
+      if (filteredCapaian.length === 0) {
+        document.getElementById('ai-insight-capaian').innerText = "Belum ada data untuk filter yang dipilih.";
+      } else {
+        let totals = { satker: {}, akun: {}, jenis: {} };
+        filteredCapaian.forEach(d => {
+          let val = d[4] || 0; // SPAN realisasi
+          let s = d[1];
+          let a = d[2];
+          let j = classifyCapaianRow(d).cat6;
+
+          if (!totals.satker[s]) totals.satker[s] = 0;
+          totals.satker[s] += val;
+
+          if (!totals.akun[a]) totals.akun[a] = 0;
+          totals.akun[a] += val;
+
+          if (!totals.jenis[j]) totals.jenis[j] = 0;
+          totals.jenis[j] += val;
+        });
+
+        const topSatkerCode = Object.keys(totals.satker).reduce((a, b) => totals.satker[a] > totals.satker[b] ? a : b, "");
+        const topAkunCode = Object.keys(totals.akun).reduce((a, b) => totals.akun[a] > totals.akun[b] ? a : b, "");
+        const topJenis = Object.keys(totals.jenis).reduce((a, b) => totals.jenis[a] > totals.jenis[b] ? a : b, "");
+
+        const topSatkerName = SATKER_MAP[topSatkerCode] || topSatkerCode;
+        const topAkunName = AKUN_MAP[topAkunCode] || topAkunCode;
+
+        const textCapaian = `<strong>Analisis Ringkas:</strong> Pada tahun berjalan 2026, sumber PNBP terbesar berasal dari <strong>${topJenis}</strong>, dengan pencapaian tertinggi dari <strong>Satker ${topSatkerName}</strong> (Akun ${topAkunName}).`;
+        document.getElementById('ai-insight-capaian').innerHTML = textCapaian;
+      }
+    }
+
+    // Render "REALISASI PNBP KKP PER AKUN" Table
+    function renderCapaianAkunTable() {
+      // Filter capaian data first
+      const filteredCapaian = capaian2026Data.filter(d => {
+        const passEs1 = !activeFilters.es1 || d[0] === activeFilters.es1;
+        const passSatker = !activeFilters.satker || d[1] === activeFilters.satker;
+        const passAkun = !activeFilters.akun || d[2] === activeFilters.akun;
+        return passEs1 && passSatker && passAkun;
+      });
+
+      let catData = {
+        'SDA Perikanan': { target: 0, real: 0 },
+        'SDA Sedimentasi': { target: 0, real: 0 },
+        'BLU LPMUKP': { target: 0, real: 0 },
+        'BLU Lainnya': { target: 0, real: 0 },
+        'PNBP Perizinan': { target: 0, real: 0 },
+        'PNBP Lainnya': { target: 0, real: 0 }
+      };
+
+      filteredCapaian.forEach(d => {
+        const cat6 = classifyCapaianRow(d).cat6;
+        if (catData[cat6]) {
+          catData[cat6].target += (d[3] || 0);
+          catData[cat6].real += (d[4] || 0);
+        }
+      });
+
+      const t = catData;
+      const totalTarget = Object.values(t).reduce((s, c) => s + c.target, 0);
+      const totalReal = Object.values(t).reduce((s, c) => s + c.real, 0);
+      const totalPct = totalTarget ? (totalReal / totalTarget * 100).toFixed(2) + '%' : '0.00%';
+
+      const sdaTarget = t['SDA Perikanan'].target + t['SDA Sedimentasi'].target;
+      const sdaReal = t['SDA Perikanan'].real + t['SDA Sedimentasi'].real;
+      const bluTarget = t['BLU LPMUKP'].target + t['BLU Lainnya'].target;
+      const bluReal = t['BLU LPMUKP'].real + t['BLU Lainnya'].real;
+      const lainnyaTarget = t['PNBP Perizinan'].target + t['PNBP Lainnya'].target;
+      const lainnyaReal = t['PNBP Perizinan'].real + t['PNBP Lainnya'].real;
+
+      function getPct(r, tg) {
+        return tg ? (r / tg * 100).toFixed(2) + '%' : '0.00%';
+      }
+
+      const tbody = document.getElementById('akun-capaian-tbody');
+      tbody.innerHTML = `
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">421<br>SDA</td>
+        <td>SDA Perikanan</td>
+        <td class="text-right">${formatIDR(t['SDA Perikanan'].target, false)}</td>
+        <td class="text-right">${t['SDA Perikanan'].real === 0 ? '-' : formatIDR(t['SDA Perikanan'].real, false)}</td>
+        <td class="text-center">${getPct(t['SDA Perikanan'].real, t['SDA Perikanan'].target)}</td>
+      </tr>
+      <tr>
+        <td>SDA Sedimentasi</td>
+        <td class="text-right">${formatIDR(t['SDA Sedimentasi'].target, false)}</td>
+        <td class="text-right">${t['SDA Sedimentasi'].real === 0 ? '-' : formatIDR(t['SDA Sedimentasi'].real, false)}</td>
+        <td class="text-center">${getPct(t['SDA Sedimentasi'].real, t['SDA Sedimentasi'].target)}</td>
+      </tr>
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">424<br>BLU</td>
+        <td>BLU LPMUKP</td>
+        <td class="text-right">${formatIDR(t['BLU LPMUKP'].target, false)}</td>
+        <td class="text-right">${t['BLU LPMUKP'].real === 0 ? '-' : formatIDR(t['BLU LPMUKP'].real, false)}</td>
+        <td class="text-center">${getPct(t['BLU LPMUKP'].real, t['BLU LPMUKP'].target)}</td>
+      </tr>
+      <tr>
+        <td>BLU Lainnya</td>
+        <td class="text-right">${formatIDR(t['BLU Lainnya'].target, false)}</td>
+        <td class="text-right">${t['BLU Lainnya'].real === 0 ? '-' : formatIDR(t['BLU Lainnya'].real, false)}</td>
+        <td class="text-center">${getPct(t['BLU Lainnya'].real, t['BLU Lainnya'].target)}</td>
+      </tr>
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">425<br>Lainnya</td>
+        <td>PNBP Perizinan</td>
+        <td class="text-right">${formatIDR(t['PNBP Perizinan'].target, false)}</td>
+        <td class="text-right">${t['PNBP Perizinan'].real === 0 ? '-' : formatIDR(t['PNBP Perizinan'].real, false)}</td>
+        <td class="text-center">${getPct(t['PNBP Perizinan'].real, t['PNBP Perizinan'].target)}</td>
+      </tr>
+      <tr>
+        <td>PNBP Lainnya</td>
+        <td class="text-right">${formatIDR(t['PNBP Lainnya'].target, false)}</td>
+        <td class="text-right">${t['PNBP Lainnya'].real === 0 ? '-' : formatIDR(t['PNBP Lainnya'].real, false)}</td>
+        <td class="text-center">${getPct(t['PNBP Lainnya'].real, t['PNBP Lainnya'].target)}</td>
+      </tr>
+      <tr class="total-row">
+        <td colspan="2" class="text-center">Total</td>
+        <td class="text-right">${formatIDR(totalTarget, false)}</td>
+        <td class="text-right">${formatIDR(totalReal, false)}</td>
+        <td class="text-center">${totalPct}</td>
+      </tr>
+      <tr>
+        <td colspan="5" style="font-style: italic; background-color: #f7fafc;">Sesuai Kode Billing Kemenkeu</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">421 - SDA</td>
+        <td class="text-right">${formatIDR(sdaTarget, false)}</td>
+        <td class="text-right">${formatIDR(sdaReal, false)}</td>
+        <td class="text-center">${getPct(sdaReal, sdaTarget)}</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">424 - BLU</td>
+        <td class="text-right">${formatIDR(bluTarget, false)}</td>
+        <td class="text-right">${formatIDR(bluReal, false)}</td>
+        <td class="text-center">${getPct(bluReal, bluTarget)}</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">425 - Lainnya</td>
+        <td class="text-right">${formatIDR(lainnyaTarget, false)}</td>
+        <td class="text-right">${formatIDR(lainnyaReal, false)}</td>
+        <td class="text-center">${getPct(lainnyaReal, lainnyaTarget)}</td>
+      </tr>
+      <tr class="total-row">
+        <td colspan="2" class="text-center">Total</td>
+        <td class="text-right">${formatIDR(totalTarget, false)}</td>
+        <td class="text-right">${formatIDR(totalReal, false)}</td>
+        <td class="text-center">${totalPct}</td>
+      </tr>
+    `;
+    }
+  </script>
+
+  <!-- SheetJS (Excel Parser) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js">
+    // Generate dynamic insights
+    function generateInsights() {
+      // Tab 1 (Rekap) Insight
+      const filteredMaster = getFilteredMasterData();
+      if (filteredMaster.length === 0) {
+        document.getElementById('ai-insight-rekap').innerText = "Belum ada data untuk filter yang dipilih.";
+      } else {
+        let totals = { satker: {}, akun: {}, jenis: {} };
+        filteredMaster.forEach(d => {
+          let val = d[5] || 0;
+          let s = d[3];
+          let a = d[4];
+          let j = classifyRow(d).cat6;
+
+          if (!totals.satker[s]) totals.satker[s] = 0;
+          totals.satker[s] += val;
+
+          if (!totals.akun[a]) totals.akun[a] = 0;
+          totals.akun[a] += val;
+
+          if (!totals.jenis[j]) totals.jenis[j] = 0;
+          totals.jenis[j] += val;
+        });
+
+        const topSatkerCode = Object.keys(totals.satker).reduce((a, b) => totals.satker[a] > totals.satker[b] ? a : b, "");
+        const topAkunCode = Object.keys(totals.akun).reduce((a, b) => totals.akun[a] > totals.akun[b] ? a : b, "");
+        const topJenis = Object.keys(totals.jenis).reduce((a, b) => totals.jenis[a] > totals.jenis[b] ? a : b, "");
+
+        const topSatkerName = SATKER_MAP[topSatkerCode] || topSatkerCode;
+        const topAkunName = AKUN_MAP[topAkunCode] || topAkunCode;
+
+        const textRekap = `<strong>Analisis Ringkas:</strong> Berdasarkan data terpilih (Tahun ${activeFilters.tahun.join(', ')}), kontributor terbesar berasal dari jenis <strong>${topJenis}</strong>, disumbangkan mayoritas oleh <strong>Satker ${topSatkerName}</strong> melalui <strong>Akun ${topAkunName}</strong>.`;
+        document.getElementById('ai-insight-rekap').innerHTML = textRekap;
+      }
+
+      // Tab 2 (Capaian) Insight
+      const filteredCapaian = capaian2026Data.filter(d => {
+        const passEs1 = !activeFilters.es1 || d[0] === activeFilters.es1;
+        const passSatker = !activeFilters.satker || d[1] === activeFilters.satker;
+        const passAkun = !activeFilters.akun || d[2] === activeFilters.akun;
+        return passEs1 && passSatker && passAkun;
+      });
+
+      if (filteredCapaian.length === 0) {
+        document.getElementById('ai-insight-capaian').innerText = "Belum ada data untuk filter yang dipilih.";
+      } else {
+        let totals = { satker: {}, akun: {}, jenis: {} };
+        filteredCapaian.forEach(d => {
+          let val = d[4] || 0; // SPAN realisasi
+          let s = d[1];
+          let a = d[2];
+          let j = classifyCapaianRow(d).cat6;
+
+          if (!totals.satker[s]) totals.satker[s] = 0;
+          totals.satker[s] += val;
+
+          if (!totals.akun[a]) totals.akun[a] = 0;
+          totals.akun[a] += val;
+
+          if (!totals.jenis[j]) totals.jenis[j] = 0;
+          totals.jenis[j] += val;
+        });
+
+        const topSatkerCode = Object.keys(totals.satker).reduce((a, b) => totals.satker[a] > totals.satker[b] ? a : b, "");
+        const topAkunCode = Object.keys(totals.akun).reduce((a, b) => totals.akun[a] > totals.akun[b] ? a : b, "");
+        const topJenis = Object.keys(totals.jenis).reduce((a, b) => totals.jenis[a] > totals.jenis[b] ? a : b, "");
+
+        const topSatkerName = SATKER_MAP[topSatkerCode] || topSatkerCode;
+        const topAkunName = AKUN_MAP[topAkunCode] || topAkunCode;
+
+        const textCapaian = `<strong>Analisis Ringkas:</strong> Pada tahun berjalan 2026, sumber PNBP terbesar berasal dari <strong>${topJenis}</strong>, dengan pencapaian tertinggi dari <strong>Satker ${topSatkerName}</strong> (Akun ${topAkunName}).`;
+        document.getElementById('ai-insight-capaian').innerHTML = textCapaian;
+      }
+    }
+
+    // Render "REALISASI PNBP KKP PER AKUN" Table
+    function renderCapaianAkunTable() {
+      // Filter capaian data first
+      const filteredCapaian = capaian2026Data.filter(d => {
+        const passEs1 = !activeFilters.es1 || d[0] === activeFilters.es1;
+        const passSatker = !activeFilters.satker || d[1] === activeFilters.satker;
+        const passAkun = !activeFilters.akun || d[2] === activeFilters.akun;
+        return passEs1 && passSatker && passAkun;
+      });
+
+      let catData = {
+        'SDA Perikanan': { target: 0, real: 0 },
+        'SDA Sedimentasi': { target: 0, real: 0 },
+        'BLU LPMUKP': { target: 0, real: 0 },
+        'BLU Lainnya': { target: 0, real: 0 },
+        'PNBP Perizinan': { target: 0, real: 0 },
+        'PNBP Lainnya': { target: 0, real: 0 }
+      };
+
+      filteredCapaian.forEach(d => {
+        const cat6 = classifyCapaianRow(d).cat6;
+        if (catData[cat6]) {
+          catData[cat6].target += (d[3] || 0);
+          catData[cat6].real += (d[4] || 0);
+        }
+      });
+
+      const t = catData;
+      const totalTarget = Object.values(t).reduce((s, c) => s + c.target, 0);
+      const totalReal = Object.values(t).reduce((s, c) => s + c.real, 0);
+      const totalPct = totalTarget ? (totalReal / totalTarget * 100).toFixed(2) + '%' : '0.00%';
+
+      const sdaTarget = t['SDA Perikanan'].target + t['SDA Sedimentasi'].target;
+      const sdaReal = t['SDA Perikanan'].real + t['SDA Sedimentasi'].real;
+      const bluTarget = t['BLU LPMUKP'].target + t['BLU Lainnya'].target;
+      const bluReal = t['BLU LPMUKP'].real + t['BLU Lainnya'].real;
+      const lainnyaTarget = t['PNBP Perizinan'].target + t['PNBP Lainnya'].target;
+      const lainnyaReal = t['PNBP Perizinan'].real + t['PNBP Lainnya'].real;
+
+      function getPct(r, tg) {
+        return tg ? (r / tg * 100).toFixed(2) + '%' : '0.00%';
+      }
+
+      const tbody = document.getElementById('akun-capaian-tbody');
+      tbody.innerHTML = `
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">421<br>SDA</td>
+        <td>SDA Perikanan</td>
+        <td class="text-right">${formatIDR(t['SDA Perikanan'].target, false)}</td>
+        <td class="text-right">${t['SDA Perikanan'].real === 0 ? '-' : formatIDR(t['SDA Perikanan'].real, false)}</td>
+        <td class="text-center">${getPct(t['SDA Perikanan'].real, t['SDA Perikanan'].target)}</td>
+      </tr>
+      <tr>
+        <td>SDA Sedimentasi</td>
+        <td class="text-right">${formatIDR(t['SDA Sedimentasi'].target, false)}</td>
+        <td class="text-right">${t['SDA Sedimentasi'].real === 0 ? '-' : formatIDR(t['SDA Sedimentasi'].real, false)}</td>
+        <td class="text-center">${getPct(t['SDA Sedimentasi'].real, t['SDA Sedimentasi'].target)}</td>
+      </tr>
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">424<br>BLU</td>
+        <td>BLU LPMUKP</td>
+        <td class="text-right">${formatIDR(t['BLU LPMUKP'].target, false)}</td>
+        <td class="text-right">${t['BLU LPMUKP'].real === 0 ? '-' : formatIDR(t['BLU LPMUKP'].real, false)}</td>
+        <td class="text-center">${getPct(t['BLU LPMUKP'].real, t['BLU LPMUKP'].target)}</td>
+      </tr>
+      <tr>
+        <td>BLU Lainnya</td>
+        <td class="text-right">${formatIDR(t['BLU Lainnya'].target, false)}</td>
+        <td class="text-right">${t['BLU Lainnya'].real === 0 ? '-' : formatIDR(t['BLU Lainnya'].real, false)}</td>
+        <td class="text-center">${getPct(t['BLU Lainnya'].real, t['BLU Lainnya'].target)}</td>
+      </tr>
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">425<br>Lainnya</td>
+        <td>PNBP Perizinan</td>
+        <td class="text-right">${formatIDR(t['PNBP Perizinan'].target, false)}</td>
+        <td class="text-right">${t['PNBP Perizinan'].real === 0 ? '-' : formatIDR(t['PNBP Perizinan'].real, false)}</td>
+        <td class="text-center">${getPct(t['PNBP Perizinan'].real, t['PNBP Perizinan'].target)}</td>
+      </tr>
+      <tr>
+        <td>PNBP Lainnya</td>
+        <td class="text-right">${formatIDR(t['PNBP Lainnya'].target, false)}</td>
+        <td class="text-right">${t['PNBP Lainnya'].real === 0 ? '-' : formatIDR(t['PNBP Lainnya'].real, false)}</td>
+        <td class="text-center">${getPct(t['PNBP Lainnya'].real, t['PNBP Lainnya'].target)}</td>
+      </tr>
+      <tr class="total-row">
+        <td colspan="2" class="text-center">Total</td>
+        <td class="text-right">${formatIDR(totalTarget, false)}</td>
+        <td class="text-right">${formatIDR(totalReal, false)}</td>
+        <td class="text-center">${totalPct}</td>
+      </tr>
+      <tr>
+        <td colspan="5" style="font-style: italic; background-color: #f7fafc;">Sesuai Kode Billing Kemenkeu</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">421 - SDA</td>
+        <td class="text-right">${formatIDR(sdaTarget, false)}</td>
+        <td class="text-right">${formatIDR(sdaReal, false)}</td>
+        <td class="text-center">${getPct(sdaReal, sdaTarget)}</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">424 - BLU</td>
+        <td class="text-right">${formatIDR(bluTarget, false)}</td>
+        <td class="text-right">${formatIDR(bluReal, false)}</td>
+        <td class="text-center">${getPct(bluReal, bluTarget)}</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">425 - Lainnya</td>
+        <td class="text-right">${formatIDR(lainnyaTarget, false)}</td>
+        <td class="text-right">${formatIDR(lainnyaReal, false)}</td>
+        <td class="text-center">${getPct(lainnyaReal, lainnyaTarget)}</td>
+      </tr>
+      <tr class="total-row">
+        <td colspan="2" class="text-center">Total</td>
+        <td class="text-right">${formatIDR(totalTarget, false)}</td>
+        <td class="text-right">${formatIDR(totalReal, false)}</td>
+        <td class="text-center">${totalPct}</td>
+      </tr>
+    `;
+    }
+  </script>
+
+  <!-- PptxGenJS (PPTX Generator) -->
+  <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js">
+    // Generate dynamic insights
+    function generateInsights() {
+      // Tab 1 (Rekap) Insight
+      const filteredMaster = getFilteredMasterData();
+      if (filteredMaster.length === 0) {
+        document.getElementById('ai-insight-rekap').innerText = "Belum ada data untuk filter yang dipilih.";
+      } else {
+        let totals = { satker: {}, akun: {}, jenis: {} };
+        filteredMaster.forEach(d => {
+          let val = d[5] || 0;
+          let s = d[3];
+          let a = d[4];
+          let j = classifyRow(d).cat6;
+
+          if (!totals.satker[s]) totals.satker[s] = 0;
+          totals.satker[s] += val;
+
+          if (!totals.akun[a]) totals.akun[a] = 0;
+          totals.akun[a] += val;
+
+          if (!totals.jenis[j]) totals.jenis[j] = 0;
+          totals.jenis[j] += val;
+        });
+
+        const topSatkerCode = Object.keys(totals.satker).reduce((a, b) => totals.satker[a] > totals.satker[b] ? a : b, "");
+        const topAkunCode = Object.keys(totals.akun).reduce((a, b) => totals.akun[a] > totals.akun[b] ? a : b, "");
+        const topJenis = Object.keys(totals.jenis).reduce((a, b) => totals.jenis[a] > totals.jenis[b] ? a : b, "");
+
+        const topSatkerName = SATKER_MAP[topSatkerCode] || topSatkerCode;
+        const topAkunName = AKUN_MAP[topAkunCode] || topAkunCode;
+
+        const textRekap = `<strong>Analisis Ringkas:</strong> Berdasarkan data terpilih (Tahun ${activeFilters.tahun.join(', ')}), kontributor terbesar berasal dari jenis <strong>${topJenis}</strong>, disumbangkan mayoritas oleh <strong>Satker ${topSatkerName}</strong> melalui <strong>Akun ${topAkunName}</strong>.`;
+        document.getElementById('ai-insight-rekap').innerHTML = textRekap;
+      }
+
+      // Tab 2 (Capaian) Insight
+      const filteredCapaian = capaian2026Data.filter(d => {
+        const passEs1 = !activeFilters.es1 || d[0] === activeFilters.es1;
+        const passSatker = !activeFilters.satker || d[1] === activeFilters.satker;
+        const passAkun = !activeFilters.akun || d[2] === activeFilters.akun;
+        return passEs1 && passSatker && passAkun;
+      });
+
+      if (filteredCapaian.length === 0) {
+        document.getElementById('ai-insight-capaian').innerText = "Belum ada data untuk filter yang dipilih.";
+      } else {
+        let totals = { satker: {}, akun: {}, jenis: {} };
+        filteredCapaian.forEach(d => {
+          let val = d[4] || 0; // SPAN realisasi
+          let s = d[1];
+          let a = d[2];
+          let j = classifyCapaianRow(d).cat6;
+
+          if (!totals.satker[s]) totals.satker[s] = 0;
+          totals.satker[s] += val;
+
+          if (!totals.akun[a]) totals.akun[a] = 0;
+          totals.akun[a] += val;
+
+          if (!totals.jenis[j]) totals.jenis[j] = 0;
+          totals.jenis[j] += val;
+        });
+
+        const topSatkerCode = Object.keys(totals.satker).reduce((a, b) => totals.satker[a] > totals.satker[b] ? a : b, "");
+        const topAkunCode = Object.keys(totals.akun).reduce((a, b) => totals.akun[a] > totals.akun[b] ? a : b, "");
+        const topJenis = Object.keys(totals.jenis).reduce((a, b) => totals.jenis[a] > totals.jenis[b] ? a : b, "");
+
+        const topSatkerName = SATKER_MAP[topSatkerCode] || topSatkerCode;
+        const topAkunName = AKUN_MAP[topAkunCode] || topAkunCode;
+
+        const textCapaian = `<strong>Analisis Ringkas:</strong> Pada tahun berjalan 2026, sumber PNBP terbesar berasal dari <strong>${topJenis}</strong>, dengan pencapaian tertinggi dari <strong>Satker ${topSatkerName}</strong> (Akun ${topAkunName}).`;
+        document.getElementById('ai-insight-capaian').innerHTML = textCapaian;
+      }
+    }
+
+    // Render "REALISASI PNBP KKP PER AKUN" Table
+    function renderCapaianAkunTable() {
+      // Filter capaian data first
+      const filteredCapaian = capaian2026Data.filter(d => {
+        const passEs1 = !activeFilters.es1 || d[0] === activeFilters.es1;
+        const passSatker = !activeFilters.satker || d[1] === activeFilters.satker;
+        const passAkun = !activeFilters.akun || d[2] === activeFilters.akun;
+        return passEs1 && passSatker && passAkun;
+      });
+
+      let catData = {
+        'SDA Perikanan': { target: 0, real: 0 },
+        'SDA Sedimentasi': { target: 0, real: 0 },
+        'BLU LPMUKP': { target: 0, real: 0 },
+        'BLU Lainnya': { target: 0, real: 0 },
+        'PNBP Perizinan': { target: 0, real: 0 },
+        'PNBP Lainnya': { target: 0, real: 0 }
+      };
+
+      filteredCapaian.forEach(d => {
+        const cat6 = classifyCapaianRow(d).cat6;
+        if (catData[cat6]) {
+          catData[cat6].target += (d[3] || 0);
+          catData[cat6].real += (d[4] || 0);
+        }
+      });
+
+      const t = catData;
+      const totalTarget = Object.values(t).reduce((s, c) => s + c.target, 0);
+      const totalReal = Object.values(t).reduce((s, c) => s + c.real, 0);
+      const totalPct = totalTarget ? (totalReal / totalTarget * 100).toFixed(2) + '%' : '0.00%';
+
+      const sdaTarget = t['SDA Perikanan'].target + t['SDA Sedimentasi'].target;
+      const sdaReal = t['SDA Perikanan'].real + t['SDA Sedimentasi'].real;
+      const bluTarget = t['BLU LPMUKP'].target + t['BLU Lainnya'].target;
+      const bluReal = t['BLU LPMUKP'].real + t['BLU Lainnya'].real;
+      const lainnyaTarget = t['PNBP Perizinan'].target + t['PNBP Lainnya'].target;
+      const lainnyaReal = t['PNBP Perizinan'].real + t['PNBP Lainnya'].real;
+
+      function getPct(r, tg) {
+        return tg ? (r / tg * 100).toFixed(2) + '%' : '0.00%';
+      }
+
+      const tbody = document.getElementById('akun-capaian-tbody');
+      tbody.innerHTML = `
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">421<br>SDA</td>
+        <td>SDA Perikanan</td>
+        <td class="text-right">${formatIDR(t['SDA Perikanan'].target, false)}</td>
+        <td class="text-right">${t['SDA Perikanan'].real === 0 ? '-' : formatIDR(t['SDA Perikanan'].real, false)}</td>
+        <td class="text-center">${getPct(t['SDA Perikanan'].real, t['SDA Perikanan'].target)}</td>
+      </tr>
+      <tr>
+        <td>SDA Sedimentasi</td>
+        <td class="text-right">${formatIDR(t['SDA Sedimentasi'].target, false)}</td>
+        <td class="text-right">${t['SDA Sedimentasi'].real === 0 ? '-' : formatIDR(t['SDA Sedimentasi'].real, false)}</td>
+        <td class="text-center">${getPct(t['SDA Sedimentasi'].real, t['SDA Sedimentasi'].target)}</td>
+      </tr>
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">424<br>BLU</td>
+        <td>BLU LPMUKP</td>
+        <td class="text-right">${formatIDR(t['BLU LPMUKP'].target, false)}</td>
+        <td class="text-right">${t['BLU LPMUKP'].real === 0 ? '-' : formatIDR(t['BLU LPMUKP'].real, false)}</td>
+        <td class="text-center">${getPct(t['BLU LPMUKP'].real, t['BLU LPMUKP'].target)}</td>
+      </tr>
+      <tr>
+        <td>BLU Lainnya</td>
+        <td class="text-right">${formatIDR(t['BLU Lainnya'].target, false)}</td>
+        <td class="text-right">${t['BLU Lainnya'].real === 0 ? '-' : formatIDR(t['BLU Lainnya'].real, false)}</td>
+        <td class="text-center">${getPct(t['BLU Lainnya'].real, t['BLU Lainnya'].target)}</td>
+      </tr>
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">425<br>Lainnya</td>
+        <td>PNBP Perizinan</td>
+        <td class="text-right">${formatIDR(t['PNBP Perizinan'].target, false)}</td>
+        <td class="text-right">${t['PNBP Perizinan'].real === 0 ? '-' : formatIDR(t['PNBP Perizinan'].real, false)}</td>
+        <td class="text-center">${getPct(t['PNBP Perizinan'].real, t['PNBP Perizinan'].target)}</td>
+      </tr>
+      <tr>
+        <td>PNBP Lainnya</td>
+        <td class="text-right">${formatIDR(t['PNBP Lainnya'].target, false)}</td>
+        <td class="text-right">${t['PNBP Lainnya'].real === 0 ? '-' : formatIDR(t['PNBP Lainnya'].real, false)}</td>
+        <td class="text-center">${getPct(t['PNBP Lainnya'].real, t['PNBP Lainnya'].target)}</td>
+      </tr>
+      <tr class="total-row">
+        <td colspan="2" class="text-center">Total</td>
+        <td class="text-right">${formatIDR(totalTarget, false)}</td>
+        <td class="text-right">${formatIDR(totalReal, false)}</td>
+        <td class="text-center">${totalPct}</td>
+      </tr>
+      <tr>
+        <td colspan="5" style="font-style: italic; background-color: #f7fafc;">Sesuai Kode Billing Kemenkeu</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">421 - SDA</td>
+        <td class="text-right">${formatIDR(sdaTarget, false)}</td>
+        <td class="text-right">${formatIDR(sdaReal, false)}</td>
+        <td class="text-center">${getPct(sdaReal, sdaTarget)}</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">424 - BLU</td>
+        <td class="text-right">${formatIDR(bluTarget, false)}</td>
+        <td class="text-right">${formatIDR(bluReal, false)}</td>
+        <td class="text-center">${getPct(bluReal, bluTarget)}</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">425 - Lainnya</td>
+        <td class="text-right">${formatIDR(lainnyaTarget, false)}</td>
+        <td class="text-right">${formatIDR(lainnyaReal, false)}</td>
+        <td class="text-center">${getPct(lainnyaReal, lainnyaTarget)}</td>
+      </tr>
+      <tr class="total-row">
+        <td colspan="2" class="text-center">Total</td>
+        <td class="text-right">${formatIDR(totalTarget, false)}</td>
+        <td class="text-right">${formatIDR(totalReal, false)}</td>
+        <td class="text-center">${totalPct}</td>
+      </tr>
+    `;
+    }
+  </script>
+
+
+  <style>
+    :root {
+      --navy: #002060;
+      --navy-light: #0b2e75;
+      --navy-dark: #001030;
+      --medium-blue: #2B78C5;
+      --light-blue: #A6C9EC;
+      --ultra-light-blue: #DCEAF7;
+      --gold: #FFC000;
+      --gold-dark: #cc9900;
+      --text-dark: #2d3748;
+      --text-light: #ffffff;
+      --bg-main: #f3f4f6;
+      --bg-card: #ffffff;
+      --border-color: #e5e7eb;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 32, 96, 0.08), 0 2px 4px -1px rgba(0, 32, 96, 0.03);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 32, 96, 0.08), 0 4px 6px -2px rgba(0, 32, 96, 0.04);
+      --shadow-xl: 0 20px 25px -5px rgba(0, 32, 96, 0.1), 0 10px 10px -5px rgba(0, 32, 96, 0.04);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-main);
+      color: var(--text-dark);
+      line-height: 1.5;
+      overflow-x: hidden;
+      font-size: 0.875rem;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 700;
+    }
+
+    /* Layout & Header Style */
+    .dashboard-container {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    .header-banner {
+      background-image: linear-gradient(rgba(0, 32, 96, 0.75), rgba(0, 16, 48, 0.9)), url('assets/header_bg.png');
+      background-size: cover;
+      background-position: center;
+      color: var(--text-light);
+      padding: 1.5rem 2.5rem;
+      position: relative;
+      border-bottom: 4px solid var(--gold);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1600px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .logo-title-group {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+
+    .logo-container {
+      background-color: white;
+      border-radius: 50%;
+      width: 64px;
+      height: 64px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: var(--shadow-md);
+      border: 2px solid var(--gold);
+    }
+
+    .logo-container img {
+      width: 50px;
+      height: 50px;
+      object-fit: contain;
+    }
+
+    .title-subtitle {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .title-subtitle h1 {
+      font-size: 1.75rem;
+      letter-spacing: -0.025em;
+    }
+
+    .title-subtitle p {
+      font-size: 0.95rem;
+      color: var(--light-blue);
+      font-weight: 500;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.625rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease-in-out;
+      border: none;
+    }
+
+    .btn-primary {
+      background-color: var(--gold);
+      color: var(--navy-dark);
+    }
+
+    .btn-primary:hover {
+      background-color: #e6ac00;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(255, 192, 0, 0.4);
+    }
+
+    .btn-secondary {
+      background-color: rgba(255, 255, 255, 0.1);
+      color: var(--text-light);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+    }
+
+    .btn-secondary:hover {
+      background-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+    }
+
+    .btn-danger {
+      background-color: #ef4444;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background-color: #dc2626;
+      transform: translateY(-2px);
+    }
+
+    /* Tab Navigation */
+    .tab-navigation {
+      display: flex;
+      background-color: var(--navy);
+      padding: 0 2.5rem;
+      box-shadow: var(--shadow-md);
+    }
+
+    .tab-nav-container {
+      display: flex;
+      max-width: 1600px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .tab-btn {
+      padding: 1rem 1.5rem;
+      color: rgba(255, 255, 255, 0.7);
+      font-weight: 600;
+      font-size: 0.95rem;
+      border: none;
+      background: none;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s ease;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-light);
+      background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    .tab-btn.active {
+      color: var(--gold);
+    }
+
+    .tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background-color: var(--gold);
+    }
+
+    /* Main Area layout */
+    .main-content {
+      flex: 1;
+      padding: 1.75rem 2.5rem;
+      max-width: 1600px;
+      margin: 0 auto;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .tab-pane {
+      display: none;
+    }
+
+    .tab-pane.active {
+      display: block;
+      animation: fadeIn 0.4s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Halaman 1 Sidebar Layout */
+    .page-layout-sidebar {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+
+    /* Horizontal Filters */
+    .filter-horizontal-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      background-color: var(--bg-card);
+      border-radius: 12px;
+      padding: 1rem 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border-color);
+      align-items: center;
+    }
+
+    .filter-horizontal-bar .filter-group {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .filter-horizontal-bar h3 {
+      width: 100%;
+      font-size: 1.05rem;
+      color: var(--navy);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-bottom: 2px solid var(--ultra-light-blue);
+      padding-bottom: 0.5rem;
+      margin-bottom: 0.25rem;
+    }
+
+    /* Remove sidebar grid */
+    .page-layout-sidebar {
+      display: block;
+    }
+
+    /* Filter Panel */
+    .filter-panel {
+      background-color: var(--bg-card);
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: var(--shadow-md);
+      border: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      position: sticky;
+      top: 1.5rem;
+    }
+
+    .filter-panel h3 {
+      font-size: 1.15rem;
+      color: var(--navy);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-bottom: 2px solid var(--ultra-light-blue);
+      padding-bottom: 0.75rem;
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .filter-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #718096;
+    }
+
+    /* Custom Searchable Dropdown */
+    .custom-select-container {
+      position: relative;
+    }
+
+    .custom-select-trigger {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.625rem 0.875rem;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      background-color: white;
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+
+    .custom-select-trigger:hover {
+      border-color: var(--medium-blue);
+    }
+
+    .custom-select-trigger span {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 90%;
+    }
+
+    .custom-select-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      z-index: 9999;
+      background-color: white;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      margin-top: 4px;
+      box-shadow: var(--shadow-lg);
+      max-height: 250px;
+      overflow-y: auto;
+      display: none;
+    }
+
+    .custom-select-dropdown.open {
+      display: block;
+    }
+
+    .search-input-wrapper {
+      padding: 6px;
+      border-bottom: 1px solid var(--border-color);
+      position: sticky;
+      top: 0;
+      background-color: white;
+      z-index: 5;
+    }
+
+    .search-input-wrapper input {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid #cbd5e0;
+      border-radius: 4px;
+      font-size: 0.825rem;
+      outline: none;
+    }
+
+    .search-input-wrapper input:focus {
+      border-color: var(--medium-blue);
+    }
+
+    .select-options-list {
+      list-style: none;
+    }
+
+    .select-option {
+      padding: 0.5rem 0.875rem;
+      font-size: 0.825rem;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .select-option:hover {
+      background-color: var(--ultra-light-blue);
+      color: var(--navy);
+    }
+
+    .select-option.selected {
+      background-color: var(--navy);
+      color: white;
+    }
+
+    /* Multi-select check list */
+    .filter-checklist-scroll {
+      max-height: 120px;
+      overflow-y: auto;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      padding: 6px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background-color: white;
+    }
+
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.825rem;
+      cursor: pointer;
+    }
+
+    .checkbox-item input {
+      cursor: pointer;
+    }
+
+    /* KPI Grid & Cards */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .kpi-card {
+      background-color: var(--bg-card);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      box-shadow: var(--shadow-md);
+      border-left: 5px solid var(--navy);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 110px;
+      border-top: 1px solid var(--border-color);
+      border-right: 1px solid var(--border-color);
+      border-bottom: 1px solid var(--border-color);
+      transition: transform 0.2s;
+    }
+
+    .kpi-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .kpi-card.kpi-gold {
+      border-left-color: var(--gold);
+    }
+
+    .kpi-card.kpi-blue {
+      border-left-color: var(--medium-blue);
+    }
+
+    .kpi-title {
+      font-size: 0.825rem;
+      font-weight: 700;
+      color: #718096;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .kpi-value {
+      font-size: 1.85rem;
+      font-weight: 800;
+      color: var(--navy-dark);
+      font-family: 'Outfit', sans-serif;
+      margin: 0.25rem 0;
+    }
+
+    .kpi-desc {
+      font-size: 0.8rem;
+      color: #4a5568;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .kpi-desc.positive {
+      color: #38a169;
+      font-weight: 600;
+    }
+
+    .kpi-desc.negative {
+      color: #e53e3e;
+      font-weight: 600;
+    }
+
+    /* Cards Layout */
+    .dashboard-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+
+    .dashboard-row.two-cols {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .dashboard-row.two-cols-unequal {
+      grid-template-columns: 4fr 6fr;
+    }
+
+    @media (max-width: 1200px) {
+      .page-layout-sidebar {
+        grid-template-columns: 1fr;
+      }
+
+      .dashboard-row.two-cols,
+      .dashboard-row.two-cols-unequal {
+        grid-template-columns: 1fr;
+      }
+
+      .filter-panel {
+        position: static;
+      }
+    }
+
+    .card {
+      background-color: var(--bg-card);
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: var(--shadow-md);
+      border: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .card-header-group {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid var(--ultra-light-blue);
+      padding-bottom: 0.75rem;
+    }
+
+    .card-title {
+      font-size: 1.2rem;
+      color: var(--navy);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    /* Toggles */
+    .toggle-group {
+      display: inline-flex;
+      background-color: var(--bg-main);
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+
+    .toggle-item {
+      padding: 0.375rem 0.875rem;
+      font-size: 0.775rem;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      background: none;
+      color: #4a5568;
+    }
+
+    .toggle-item.active {
+      background-color: var(--navy);
+      color: white;
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Tables */
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+
+    .dashboard-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.85rem;
+    }
+
+    .dashboard-table th {
+      background-color: var(--navy);
+      color: white;
+      padding: 0.75rem 1rem;
+      font-weight: 600;
+      font-family: 'Outfit', sans-serif;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+
+    .dashboard-table td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .dashboard-table tbody tr {
+      background-color: white;
+      transition: background 0.15s;
+    }
+
+    .dashboard-table tbody tr:nth-child(even) {
+      background-color: var(--ultra-light-blue);
+    }
+
+    .dashboard-table tbody tr:hover {
+      background-color: #e2e8f0;
+    }
+
+    .dashboard-table tr.total-row {
+      background-color: var(--navy) !important;
+      color: white;
+      font-weight: 700;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    .dashboard-table tr.total-row td {
+      border-top: 2px solid var(--gold);
+      border-bottom: none;
+    }
+
+    .text-right {
+      text-align: right;
+    }
+
+    .text-center {
+      text-align: center;
+    }
+
+    .badge-percent {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 0.75rem;
+    }
+
+    .badge-percent.success {
+      background-color: #def7ec;
+      color: #03543f;
+    }
+
+    .badge-percent.warning {
+      background-color: #fef08a;
+      color: #713f12;
+    }
+
+    .badge-percent.danger {
+      background-color: #fde8e8;
+      color: #9b1c1c;
+    }
+
+    /* Page 2 Specific Styles */
+    .title-box-capaian {
+      background-color: #fffef0;
+      border: 1px dashed var(--gold);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .title-box-capaian i {
+      font-size: 1.5rem;
+      color: var(--gold-dark);
+    }
+
+    .title-box-capaian p {
+      font-size: 0.95rem;
+      color: var(--navy-dark);
+      font-weight: 500;
+    }
+
+    .title-box-capaian strong {
+      font-size: 1.15rem;
+      color: var(--navy);
+    }
+
+    /* Simple Analysis Table */
+    .simple-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+    }
+
+    .stat-item {
+      background-color: var(--bg-main);
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+
+    .stat-item-label {
+      font-size: 0.75rem;
+      color: #718096;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .stat-item-val {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--navy);
+      margin-top: 2px;
+    }
+
+    /* Footer styling */
+    .dashboard-footer {
+      background-color: var(--navy-dark);
+      color: rgba(255, 255, 255, 0.6);
+      padding: 1rem 2.5rem;
+      text-align: center;
+      font-size: 0.8rem;
+      margin-top: auto;
+      border-top: 3px solid var(--gold);
+    }
+
+    .dashboard-footer a {
+      color: var(--gold);
+      text-decoration: none;
+    }
+
+    /* Hidden File Input */
+    #excel-file-input {
+      display: none;
+    }
+
+    /* Chart wrappers */
+    .chart-container-wrapper {
+      position: relative;
+      height: 320px;
+      width: 100%;
+    }
+
+    .chart-container-large-wrapper {
+      position: relative;
+      height: 380px;
+      width: 100%;
+    }
+
+    /* Printing styles for PDF export */
+    @media print {
+      body {
+        background-color: white;
+        color: black;
+      }
+
+      .header-banner {
+        background-image: none !important;
+        background-color: var(--navy) !important;
+        color: white !important;
+        padding: 10px !important;
+        border-bottom: 2px solid var(--gold) !important;
+      }
+
+      .logo-container {
+        border-color: var(--gold) !important;
+      }
+
+      .tab-navigation,
+      .filter-panel,
+      .header-actions,
+      .card-actions {
+        display: none !important;
+      }
+
+      .page-layout-sidebar {
+        grid-template-columns: 1fr !important;
+      }
+
+      .main-content {
+        padding: 10px !important;
+        max-width: 100% !important;
+        width: 100% !important;
+      }
+
+      .card {
+        box-shadow: none !important;
+        border: 1px solid #ccc !important;
+        page-break-inside: avoid;
+        margin-bottom: 1.5rem;
+      }
+
+      .tab-pane {
+        display: block !important;
+        /* Force show both tabs in printing if wanted, or print active only */
+      }
+
+      .tab-pane:not(.active) {
+        display: none !important;
+        /* Standard print prints active page */
+      }
+
+      .kpi-card {
+        box-shadow: none !important;
+        border: 1px solid #ccc !important;
+      }
+
+      .dashboard-table th {
+        background-color: var(--navy) !important;
+        color: white !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .dashboard-table tbody tr:nth-child(even) {
+        background-color: #f7fafc !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .dashboard-table tr.total-row {
+        background-color: var(--navy) !important;
+        color: white !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="dashboard-container">
+    <!-- Header Banner -->
+    <header class="header-banner">
+      <div class="header-content">
+        <div class="logo-title-group">
+          <div class="logo-container">
+            <img src="assets/Logo KKP Round - Warna.png" alt="Logo KKP" id="logo-image">
+          </div>
+          <div class="title-subtitle">
+            <h1 id="header-title-text">Dashboard Monev Capaian PNBP KKP</h1>
+            <p id="data-update-indicator"><i class="fa-regular fa-clock"></i> Sumber data: Excel bawaan | Update
+              Terakhir: 9 Juli 2026</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <!-- Hidden file input for updating data -->
+          <input type="file" id="excel-file-input" accept=".xlsx" />
+          <button class="btn btn-secondary" onclick="document.getElementById('excel-file-input').click()"><i
+              class="fa-solid fa-file-excel"></i> Update Data</button>
+          <button class="btn btn-secondary" onclick="exportToPDF()"><i class="fa-solid fa-file-pdf"></i> Export
+            PDF</button>
+          <button class="btn btn-primary" onclick="exportToPPTX()"><i class="fa-solid fa-file-powerpoint"></i> Export
+            PPTX</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tab-navigation">
+      <div class="tab-nav-container">
+        <button class="tab-btn active" onclick="switchTab(event, 'tab-capaian2026')">Capaian Realisasi PNBP
+          2026</button>
+        <button class="tab-btn" onclick="switchTab(event, 'tab-rekap')">Rekap Realisasi PNBP 2020-2025</button>
+      </div>
+    </nav>
+
+    <!-- Main Area -->
+    <main class="main-content">
+      <div class="page-layout-sidebar">
+
+        <div class="tabs-container" style="display: flex; flex-direction: column; width: 100%; min-width: 0;">
+          <div id="tab-capaian2026" class="tab-pane active">
+
+            <div class="filter-horizontal-bar">
+              <h3><i class="fa-solid fa-filter"></i> Filter Analisis Capaian 2026</h3>
+              <div class="filter-group">
+                <span class="filter-label">Nama Eselon I</span>
+                <div class="custom-select-container" id="select-es1-container">
+                  <div class="custom-select-trigger" onclick="toggleDropdown('dropdown-es1')">
+                    <span id="trigger-es1-text">Semua Eselon I</span>
+                    <i class="fa-solid fa-chevron-down"></i>
+                  </div>
+                  <div class="custom-select-dropdown" id="dropdown-es1">
+                    <div class="search-input-wrapper">
+                      <input type="text" placeholder="Cari Eselon I..."
+                        oninput="filterOptions('dropdown-es1', this.value)">
+                    </div>
+                    <ul class="select-options-list" id="options-es1-list">
+                      <!-- Dynamically populated -->
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              <div class="filter-group">
+                <span class="filter-label">Nama Satker</span>
+                <div class="custom-select-container" id="select-satker-container">
+                  <div class="custom-select-trigger" onclick="toggleDropdown('dropdown-satker')">
+                    <span id="trigger-satker-text">Semua Satuan Kerja</span>
+                    <i class="fa-solid fa-chevron-down"></i>
+                  </div>
+                  <div class="custom-select-dropdown" id="dropdown-satker">
+                    <div class="search-input-wrapper">
+                      <input type="text" placeholder="Cari Satker..."
+                        oninput="filterOptions('dropdown-satker', this.value)">
+                    </div>
+                    <ul class="select-options-list" id="options-satker-list">
+                      <!-- Dynamically populated -->
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              <div class="filter-group">
+                <span class="filter-label">Nama Akun</span>
+                <div class="custom-select-container" id="select-akun-container">
+                  <div class="custom-select-trigger" onclick="toggleDropdown('dropdown-akun')">
+                    <span id="trigger-akun-text">Semua Akun</span>
+                    <i class="fa-solid fa-chevron-down"></i>
+                  </div>
+                  <div class="custom-select-dropdown" id="dropdown-akun">
+                    <div class="search-input-wrapper">
+                      <input type="text" placeholder="Cari Akun..."
+                        oninput="filterOptions('dropdown-akun', this.value)">
+                    </div>
+                    <ul class="select-options-list" id="options-akun-list">
+                      <!-- Dynamically populated -->
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              <div style="display: flex; align-items: flex-end;">
+                <button class="btn btn-danger" style="height: 38px;" onclick="resetFiltersCapaian()">
+                  <i class="fa-solid fa-rotate-left"></i> Reset Filter
+                </button>
+              </div>
+            </div>
+            <!-- Upper Section: Key KPI highlight box -->
+            <div class="title-box-capaian">
+              <i class="fa-solid fa-circle-info"></i>
+              <p>Realisasi Pendapatan Negara Bukan Pajak (PNBP) Kementerian Kelautan dan Perikanan tahun berjalan
+                berjalan s.d. 9 Juli 2026 mencapai <strong id="capaian-highlight-total">Rp1,21 Triliun</strong> dari
+                total target <strong>Rp2,98 Triliun</strong>.</p>
+            </div>
+
+            <!-- AI Insight Capaian -->
+            <div class="title-box-capaian" style="background-color: #f0f7ff; border-color: var(--medium-blue);">
+              <i class="fa-solid fa-lightbulb" style="color: var(--medium-blue);"></i>
+              <p id="ai-insight-capaian">Memuat analisis AI...</p>
+            </div>
+
+            <!-- Capaian KPIs -->
+            <div class="kpi-grid" style="margin-bottom: 1.5rem;">
+              <div class="kpi-card">
+                <div class="kpi-title">Total Realisasi SPAN 2026</div>
+                <div class="kpi-value" id="kpi-capaian-realisasi">Rp 0</div>
+                <div class="kpi-desc">Sesuai filter terpilih</div>
+              </div>
+              <div class="kpi-card kpi-gold">
+                <div class="kpi-title">% Capaian thd Target</div>
+                <div class="kpi-value" id="kpi-capaian-pct">0.00%</div>
+                <div class="kpi-desc">Persentase dari Target Nasional/Filter</div>
+              </div>
+              <div class="kpi-card kpi-blue">
+                <div class="kpi-title">Kontributor Terbesar 2026</div>
+                <div class="kpi-value" id="kpi-capaian-top-contrib"
+                  style="font-size: 1.25rem; font-weight: 700; margin: 0.5rem 0;">-</div>
+                <div class="kpi-desc">Berdasarkan data tersaring</div>
+              </div>
+            </div>
+
+
+            <!-- Table Capaian Per Akun -->
+            <div class="card" style="grid-column: 1 / -1;">
+              <div class="card-header-group">
+                <h3 class="card-title"><i class="fa-solid fa-file-invoice-dollar"></i> REALISASI PNBP KKP PER AKUN</h3>
+                <span style="font-size: 0.775rem; color: #718096; font-weight: 600;"><i
+                    class="fa-solid fa-database"></i> Sumber: SPAN (Realisasi) & TPNBP (Target)</span>
+              </div>
+              <div class="table-container">
+                <table class="dashboard-table" id="akun-capaian-table">
+                  <thead>
+                    <tr>
+                      <th colspan="2" class="text-left" style="background-color: var(--gold); color: var(--navy-dark);">
+                        Jenis PNBP</th>
+                      <th class="text-right" style="background-color: var(--navy); color: white;">Target</th>
+                      <th class="text-right" style="background-color: var(--navy); color: white;">Realisasi</th>
+                      <th class="text-center" style="background-color: var(--navy); color: white;">%</th>
+                    </tr>
+                  </thead>
+                  <tbody id="akun-capaian-tbody">
+                    <!-- Dynamically populated -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Row 1: Left Clustered Bar + Right Eselon I Table -->
+            <div class="dashboard-row two-cols-unequal">
+              <!-- Horizontal Bar Target vs Realisasi by Jenis PNBP -->
+              <div class="card">
+                <div class="card-header-group">
+                  <h3 class="card-title"><i class="fa-solid fa-chart-bar"></i> Perbandingan Target vs Realisasi 2026 per
+                    Jenis PNBP</h3>
+                  <div class="card-actions">
+                    <div class="toggle-group" id="toggle-capaian-jenis">
+                      <button class="toggle-item active" onclick="toggleCapaianJenis(6)">Jenis 6</button>
+                      <button class="toggle-item" onclick="toggleCapaianJenis(3)">Jenis 3</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="chart-container-large-wrapper">
+                  <canvas id="capaianBarChart"></canvas>
+                </div>
+              </div>
+
+              <!-- Eselon I Table -->
+              <div class="card">
+                <div class="card-header-group">
+                  <h3 class="card-title"><i class="fa-solid fa-table"></i> Target dan Realisasi per Eselon I (TA 2026)
+                  </h3>
+                  <span style="font-size: 0.775rem; color: #718096; font-weight: 600;"><i
+                      class="fa-solid fa-database"></i> Sumber: SPAN (Realisasi) & TPNBP (Target)</span>
+                </div>
+                <div class="table-container">
+                  <table class="dashboard-table" id="es1-capaian-table">
+                    <thead>
+                      <tr>
+                        <th class="text-center" style="width: 50px;">No.</th>
+                        <th>Nama Eselon I</th>
+                        <th class="text-right">Target (Rp)</th>
+                        <th class="text-right">Realisasi (Rp)</th>
+                        <th class="text-center" style="width: 100px;">% Capaian</th>
+                      </tr>
+                    </thead>
+                    <tbody id="es1-capaian-tbody">
+                      <!-- Dynamically populated -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+
+
+            <!-- Row 2: 12-Year Stacked Bar + Line Chart -->
+            <div class="dashboard-row">
+              <div class="card">
+                <div class="card-header-group">
+                  <h3 class="card-title"><i class="fa-solid fa-chart-area"></i> Laporan Capaian PNBP KKP Tahun 2014 -
+                    2026</h3>
+                  <div class="card-actions">
+                    <div class="toggle-group" id="toggle-historical-years">
+                      <button class="toggle-item active" onclick="toggleHistoricalYears('all')">Seluruh Tahun</button>
+                      <button class="toggle-item" onclick="toggleHistoricalYears('5y')">5 Tahun Terakhir</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="chart-container-large-wrapper" style="height: 400px;">
+                  <canvas id="historicalStackedChart"></canvas>
+                </div>
+                <p style="font-size: 0.8rem; color: #718096; font-style: italic; margin-top: -0.5rem;">
+                  *Catatan: Tahun 2026 adalah tahun berjalan (data s.d. 9 Juli 2026). Angka dalam satuan Miliar Rupiah.
+                </p>
+              </div>
+            </div>
+          </div>
+
+
+          <div id="tab-rekap" class="tab-pane">
+
+            <div class="filter-horizontal-bar">
+              <h3><i class="fa-solid fa-filter"></i> Filter Data Laporan 2020-2025</h3>
+              <div class="filter-group">
+                <span class="filter-label">Tahun</span>
+                <div class="filter-checklist-scroll" id="filter-tahun-list" class="filter-checklist-scroll radio-list">
+                  <!-- Dynamically populated -->
+                </div>
+              </div>
+              <div class="filter-group">
+                <span class="filter-label">Bulan</span>
+                <div class="filter-checklist-scroll" id="filter-bulan-list">
+                  <!-- Dynamically populated -->
+                </div>
+              </div>
+              <div style="display: flex; align-items: flex-end;">
+                <button class="btn btn-danger" style="height: 38px;" onclick="resetFiltersRekap()">
+                  <i class="fa-solid fa-rotate-left"></i> Reset Filter
+                </button>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+              <!-- KPIs -->
+
+              <!-- AI Insight Rekap -->
+              <div class="title-box-capaian" style="background-color: #f0f7ff; border-color: var(--medium-blue);">
+                <i class="fa-solid fa-lightbulb" style="color: var(--medium-blue);"></i>
+                <p id="ai-insight-rekap">Memuat analisis AI...</p>
+              </div>
+
+              <div class="kpi-grid">
+                <div class="kpi-card">
+                  <div class="kpi-title">Total Realisasi PNBP</div>
+                  <div class="kpi-value" id="kpi-total-realisasi">Rp 0</div>
+                  <div class="kpi-desc" id="kpi-total-desc">Tahun-tahun pilihan terfilter</div>
+                </div>
+                <div class="kpi-card kpi-gold">
+                  <div class="kpi-title">Pertumbuhan YoY Rata-rata</div>
+                  <div class="kpi-value" id="kpi-yoy-growth">0.00%</div>
+                  <div class="kpi-desc" id="kpi-yoy-desc">Rata-rata pertumbuhan tahun-ke-tahun</div>
+                </div>
+                <div class="kpi-card kpi-blue">
+                  <div class="kpi-title">Kontributor Terbesar</div>
+                  <div class="kpi-value" id="kpi-top-contrib"
+                    style="font-size: 1.25rem; font-weight: 700; margin: 0.5rem 0;">-</div>
+                  <div class="kpi-desc" id="kpi-top-desc">Berdasarkan data tersaring</div>
+                </div>
+              </div>
+
+              <!-- Charts Row 1 -->
+              <div class="dashboard-row two-cols">
+                <!-- YoY Chart Card -->
+                <div class="card">
+                  <div class="card-header-group">
+                    <h3 class="card-title"><i class="fa-solid fa-chart-column"></i> Perbandingan YoY Bulan Terpilih
+                      (2020-2025)</h3>
+                    <div class="card-actions">
+                      <div class="toggle-group" id="toggle-yoy-pnbp-type">
+                        <button class="toggle-item active" onclick="toggleYoyPNBP(3)">Jenis 3</button>
+                        <button class="toggle-item" onclick="toggleYoyPNBP(6)">Jenis 6</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="chart-container-wrapper">
+                    <canvas id="yoyColumnChart"></canvas>
+                  </div>
+                </div>
+
+                <!-- Monthly Line Chart Card -->
+                <div class="card">
+                  <div class="card-header-group">
+                    <h3 class="card-title"><i class="fa-solid fa-chart-line"></i> Tren Realisasi Bulanan</h3>
+                    <div class="card-actions">
+                      <div class="toggle-group" id="toggle-monthly-chart-type">
+                        <!-- Placeholder if toggle is needed later -->
+                      </div>
+                    </div>
+                  </div>
+                  <div class="chart-container-wrapper">
+                    <canvas id="monthlyTrendChart"></canvas>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Table and Category breakdown -->
+              <div class="dashboard-row two-cols-unequal">
+                <!-- Breakdown Card -->
+                <div class="card">
+                  <div class="card-header-group">
+                    <h3 class="card-title"><i class="fa-solid fa-chart-pie"></i> Komposisi Kontribusi</h3>
+                  </div>
+                  <div class="chart-container-wrapper" style="height: 250px;">
+                    <canvas id="compositionPieChart"></canvas>
+                  </div>
+                  <div class="simple-stats-grid" id="composition-legend-wrapper">
+                    <!-- Dynamically filled simple info -->
+                  </div>
+
+                  <!-- Drilldown Table Area -->
+                  <div id="pie-drilldown-container"
+                    style="display: none; margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                    <h4 style="font-size: 0.9rem; color: var(--navy); margin-bottom: 0.5rem;"><i
+                        class="fa-solid fa-search"></i> Rincian: <span id="pie-drilldown-title"></span></h4>
+                    <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+                      <table class="dashboard-table" style="font-size: 0.75rem;">
+                        <thead>
+                          <tr>
+                            <th>Satker</th>
+                            <th>Akun</th>
+                            <th class="text-right">Realisasi (Rp)</th>
+                          </tr>
+                        </thead>
+                        <tbody id="pie-drilldown-tbody"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Detailed stats table -->
+                <div class="card">
+                  <div class="card-header-group">
+                    <h3 class="card-title"><i class="fa-solid fa-table-list"></i> Ringkasan Realisasi per Tahun (Rp)
+                    </h3>
+                  </div>
+                  <div class="table-container">
+                    <table class="dashboard-table" id="summary-annual-table">
+                      <thead>
+                        <tr>
+                          <th>Tahun</th>
+                          <th class="text-right">SDA</th>
+                          <th class="text-right">BLU</th>
+                          <th class="text-right">Lainnya</th>
+                          <th class="text-right">Total</th>
+                          <th class="text-center">YoY (%)</th>
+                        </tr>
+                      </thead>
+                      <tbody id="summary-annual-tbody">
+                        <!-- Dynamically populated -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </main>/div>
+  </div>
+  </div>
+  </div>
+  </div>
+
+  <!-- Tab 2: Capaian 2026 -->
+  <div id="tab-capaian2026" class="tab-pane">
+    <!-- Upper Section: Key KPI highlight box -->
+    <div class="title-box-capaian">
+      <i class="fa-solid fa-circle-info"></i>
+      <p>Realisasi Pendapatan Negara Bukan Pajak (PNBP) Kementerian Kelautan dan Perikanan tahun berjalan berjalan s.d.
+        9 Juli 2026 mencapai <strong id="capaian-highlight-total">Rp1,21 Triliun</strong> dari total target
+        <strong>Rp2,98 Triliun</strong>.
+      </p>
+    </div>
+
+    <!-- Table Capaian Per Akun -->
+    <div class="card" style="grid-column: 1 / -1;">
+      <div class="card-header-group">
+        <h3 class="card-title"><i class="fa-solid fa-file-invoice-dollar"></i> REALISASI PNBP KKP PER AKUN</h3>
+        <span style="font-size: 0.775rem; color: #718096; font-weight: 600;"><i class="fa-solid fa-database"></i>
+          Sumber: SPAN (Realisasi) & TPNBP (Target)</span>
+      </div>
+      <div class="table-container">
+        <table class="dashboard-table" id="akun-capaian-table">
+          <thead>
+            <tr>
+              <th colspan="2" class="text-left" style="background-color: var(--gold); color: var(--navy-dark);">Jenis
+                PNBP</th>
+              <th class="text-right" style="background-color: var(--navy); color: white;">Target</th>
+              <th class="text-right" style="background-color: var(--navy); color: white;">Realisasi</th>
+              <th class="text-center" style="background-color: var(--navy); color: white;">%</th>
+            </tr>
+          </thead>
+          <tbody id="akun-capaian-tbody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Row 1: Left Clustered Bar + Right Eselon I Table -->
+    <div class="dashboard-row two-cols-unequal">
+      <!-- Horizontal Bar Target vs Realisasi by Jenis PNBP -->
+      <div class="card">
+        <div class="card-header-group">
+          <h3 class="card-title"><i class="fa-solid fa-chart-bar"></i> Perbandingan Target vs Realisasi 2026 per Jenis
+            PNBP</h3>
+          <div class="card-actions">
+            <div class="toggle-group" id="toggle-capaian-jenis">
+              <button class="toggle-item active" onclick="toggleCapaianJenis(6)">Jenis 6</button>
+              <button class="toggle-item" onclick="toggleCapaianJenis(3)">Jenis 3</button>
+            </div>
+          </div>
+        </div>
+        <div class="chart-container-large-wrapper">
+          <canvas id="capaianBarChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Eselon I Table -->
+      <div class="card">
+        <div class="card-header-group">
+          <h3 class="card-title"><i class="fa-solid fa-table"></i> Target dan Realisasi per Eselon I (TA 2026)</h3>
+          <span style="font-size: 0.775rem; color: #718096; font-weight: 600;"><i class="fa-solid fa-database"></i>
+            Sumber: SPAN (Realisasi) & TPNBP (Target)</span>
+        </div>
+        <div class="table-container">
+          <table class="dashboard-table" id="es1-capaian-table">
+            <thead>
+              <tr>
+                <th class="text-center" style="width: 50px;">No.</th>
+                <th>Nama Eselon I</th>
+                <th class="text-right">Target (Rp)</th>
+                <th class="text-right">Realisasi (Rp)</th>
+                <th class="text-center" style="width: 100px;">% Capaian</th>
+              </tr>
+            </thead>
+            <tbody id="es1-capaian-tbody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 2: 12-Year Stacked Bar + Line Chart -->
+    <div class="dashboard-row">
+      <div class="card">
+        <div class="card-header-group">
+          <h3 class="card-title"><i class="fa-solid fa-chart-area"></i> Laporan Capaian PNBP KKP Tahun 2014 - 2026</h3>
+          <div class="card-actions">
+            <div class="toggle-group" id="toggle-historical-years">
+              <button class="toggle-item active" onclick="toggleHistoricalYears('all')">Seluruh Tahun</button>
+              <button class="toggle-item" onclick="toggleHistoricalYears('5y')">5 Tahun Terakhir</button>
+            </div>
+          </div>
+        </div>
+        <div class="chart-container-large-wrapper" style="height: 400px;">
+          <canvas id="historicalStackedChart"></canvas>
+        </div>
+        <p style="font-size: 0.8rem; color: #718096; font-style: italic; margin-top: -0.5rem;">
+          *Catatan: Tahun 2026 adalah tahun berjalan (data s.d. 9 Juli 2026). Angka dalam satuan Miliar Rupiah.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="dashboard-footer">
+    <div
+      style="max-width: 1600px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; width: 100%;">
+      <span>&copy; 2026 Kementerian Kelautan dan Perikanan (KKP). Hak Cipta Dilindungi.</span>
+      <span>Dikembangkan untuk Monev Kinerja PNBP TA 2026 | <a href="#"
+          onclick="alert('Petunjuk: Klik tombol Update Data untuk mengunggah file Excel PNBP terbaru. Ekspor ke PDF atau PPTX menggunakan tombol di kanan atas.')"><i
+            class="fa-solid fa-circle-question"></i> Petunjuk Penggunaan</a></span>
+    </div>
+  </footer>
+  </div>
+
+  <!-- Load Default Data File -->
+  <script src="default_data.js">
+    // Generate dynamic insights
+    function generateInsights() {
+      // Tab 1 (Rekap) Insight
+      const filteredMaster = getFilteredMasterData();
+      if (filteredMaster.length === 0) {
+        document.getElementById('ai-insight-rekap').innerText = "Belum ada data untuk filter yang dipilih.";
+      } else {
+        let totals = { satker: {}, akun: {}, jenis: {} };
+        filteredMaster.forEach(d => {
+          let val = d[5] || 0;
+          let s = d[3];
+          let a = d[4];
+          let j = classifyRow(d).cat6;
+
+          if (!totals.satker[s]) totals.satker[s] = 0;
+          totals.satker[s] += val;
+
+          if (!totals.akun[a]) totals.akun[a] = 0;
+          totals.akun[a] += val;
+
+          if (!totals.jenis[j]) totals.jenis[j] = 0;
+          totals.jenis[j] += val;
+        });
+
+        const topSatkerCode = Object.keys(totals.satker).reduce((a, b) => totals.satker[a] > totals.satker[b] ? a : b, "");
+        const topAkunCode = Object.keys(totals.akun).reduce((a, b) => totals.akun[a] > totals.akun[b] ? a : b, "");
+        const topJenis = Object.keys(totals.jenis).reduce((a, b) => totals.jenis[a] > totals.jenis[b] ? a : b, "");
+
+        const topSatkerName = SATKER_MAP[topSatkerCode] || topSatkerCode;
+        const topAkunName = AKUN_MAP[topAkunCode] || topAkunCode;
+
+        const textRekap = `<strong>Analisis Ringkas:</strong> Berdasarkan data terpilih (Tahun ${activeFilters.tahun.join(', ')}), kontributor terbesar berasal dari jenis <strong>${topJenis}</strong>, disumbangkan mayoritas oleh <strong>Satker ${topSatkerName}</strong> melalui <strong>Akun ${topAkunName}</strong>.`;
+        document.getElementById('ai-insight-rekap').innerHTML = textRekap;
+      }
+
+      // Tab 2 (Capaian) Insight
+      const filteredCapaian = capaian2026Data.filter(d => {
+        const passEs1 = !activeFilters.es1 || d[0] === activeFilters.es1;
+        const passSatker = !activeFilters.satker || d[1] === activeFilters.satker;
+        const passAkun = !activeFilters.akun || d[2] === activeFilters.akun;
+        return passEs1 && passSatker && passAkun;
+      });
+
+      if (filteredCapaian.length === 0) {
+        document.getElementById('ai-insight-capaian').innerText = "Belum ada data untuk filter yang dipilih.";
+      } else {
+        let totals = { satker: {}, akun: {}, jenis: {} };
+        filteredCapaian.forEach(d => {
+          let val = d[4] || 0; // SPAN realisasi
+          let s = d[1];
+          let a = d[2];
+          let j = classifyCapaianRow(d).cat6;
+
+          if (!totals.satker[s]) totals.satker[s] = 0;
+          totals.satker[s] += val;
+
+          if (!totals.akun[a]) totals.akun[a] = 0;
+          totals.akun[a] += val;
+
+          if (!totals.jenis[j]) totals.jenis[j] = 0;
+          totals.jenis[j] += val;
+        });
+
+        const topSatkerCode = Object.keys(totals.satker).reduce((a, b) => totals.satker[a] > totals.satker[b] ? a : b, "");
+        const topAkunCode = Object.keys(totals.akun).reduce((a, b) => totals.akun[a] > totals.akun[b] ? a : b, "");
+        const topJenis = Object.keys(totals.jenis).reduce((a, b) => totals.jenis[a] > totals.jenis[b] ? a : b, "");
+
+        const topSatkerName = SATKER_MAP[topSatkerCode] || topSatkerCode;
+        const topAkunName = AKUN_MAP[topAkunCode] || topAkunCode;
+
+        const textCapaian = `<strong>Analisis Ringkas:</strong> Pada tahun berjalan 2026, sumber PNBP terbesar berasal dari <strong>${topJenis}</strong>, dengan pencapaian tertinggi dari <strong>Satker ${topSatkerName}</strong> (Akun ${topAkunName}).`;
+        document.getElementById('ai-insight-capaian').innerHTML = textCapaian;
+      }
+    }
+
+    // Render "REALISASI PNBP KKP PER AKUN" Table
+    function renderCapaianAkunTable() {
+      // Filter capaian data first
+      const filteredCapaian = capaian2026Data.filter(d => {
+        const passEs1 = !activeFilters.es1 || d[0] === activeFilters.es1;
+        const passSatker = !activeFilters.satker || d[1] === activeFilters.satker;
+        const passAkun = !activeFilters.akun || d[2] === activeFilters.akun;
+        return passEs1 && passSatker && passAkun;
+      });
+
+      let catData = {
+        'SDA Perikanan': { target: 0, real: 0 },
+        'SDA Sedimentasi': { target: 0, real: 0 },
+        'BLU LPMUKP': { target: 0, real: 0 },
+        'BLU Lainnya': { target: 0, real: 0 },
+        'PNBP Perizinan': { target: 0, real: 0 },
+        'PNBP Lainnya': { target: 0, real: 0 }
+      };
+
+      filteredCapaian.forEach(d => {
+        const cat6 = classifyCapaianRow(d).cat6;
+        if (catData[cat6]) {
+          catData[cat6].target += (d[3] || 0);
+          catData[cat6].real += (d[4] || 0);
+        }
+      });
+
+      const t = catData;
+      const totalTarget = Object.values(t).reduce((s, c) => s + c.target, 0);
+      const totalReal = Object.values(t).reduce((s, c) => s + c.real, 0);
+      const totalPct = totalTarget ? (totalReal / totalTarget * 100).toFixed(2) + '%' : '0.00%';
+
+      const sdaTarget = t['SDA Perikanan'].target + t['SDA Sedimentasi'].target;
+      const sdaReal = t['SDA Perikanan'].real + t['SDA Sedimentasi'].real;
+      const bluTarget = t['BLU LPMUKP'].target + t['BLU Lainnya'].target;
+      const bluReal = t['BLU LPMUKP'].real + t['BLU Lainnya'].real;
+      const lainnyaTarget = t['PNBP Perizinan'].target + t['PNBP Lainnya'].target;
+      const lainnyaReal = t['PNBP Perizinan'].real + t['PNBP Lainnya'].real;
+
+      function getPct(r, tg) {
+        return tg ? (r / tg * 100).toFixed(2) + '%' : '0.00%';
+      }
+
+      const tbody = document.getElementById('akun-capaian-tbody');
+      tbody.innerHTML = `
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">421<br>SDA</td>
+        <td>SDA Perikanan</td>
+        <td class="text-right">${formatIDR(t['SDA Perikanan'].target, false)}</td>
+        <td class="text-right">${t['SDA Perikanan'].real === 0 ? '-' : formatIDR(t['SDA Perikanan'].real, false)}</td>
+        <td class="text-center">${getPct(t['SDA Perikanan'].real, t['SDA Perikanan'].target)}</td>
+      </tr>
+      <tr>
+        <td>SDA Sedimentasi</td>
+        <td class="text-right">${formatIDR(t['SDA Sedimentasi'].target, false)}</td>
+        <td class="text-right">${t['SDA Sedimentasi'].real === 0 ? '-' : formatIDR(t['SDA Sedimentasi'].real, false)}</td>
+        <td class="text-center">${getPct(t['SDA Sedimentasi'].real, t['SDA Sedimentasi'].target)}</td>
+      </tr>
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">424<br>BLU</td>
+        <td>BLU LPMUKP</td>
+        <td class="text-right">${formatIDR(t['BLU LPMUKP'].target, false)}</td>
+        <td class="text-right">${t['BLU LPMUKP'].real === 0 ? '-' : formatIDR(t['BLU LPMUKP'].real, false)}</td>
+        <td class="text-center">${getPct(t['BLU LPMUKP'].real, t['BLU LPMUKP'].target)}</td>
+      </tr>
+      <tr>
+        <td>BLU Lainnya</td>
+        <td class="text-right">${formatIDR(t['BLU Lainnya'].target, false)}</td>
+        <td class="text-right">${t['BLU Lainnya'].real === 0 ? '-' : formatIDR(t['BLU Lainnya'].real, false)}</td>
+        <td class="text-center">${getPct(t['BLU Lainnya'].real, t['BLU Lainnya'].target)}</td>
+      </tr>
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">425<br>Lainnya</td>
+        <td>PNBP Perizinan</td>
+        <td class="text-right">${formatIDR(t['PNBP Perizinan'].target, false)}</td>
+        <td class="text-right">${t['PNBP Perizinan'].real === 0 ? '-' : formatIDR(t['PNBP Perizinan'].real, false)}</td>
+        <td class="text-center">${getPct(t['PNBP Perizinan'].real, t['PNBP Perizinan'].target)}</td>
+      </tr>
+      <tr>
+        <td>PNBP Lainnya</td>
+        <td class="text-right">${formatIDR(t['PNBP Lainnya'].target, false)}</td>
+        <td class="text-right">${t['PNBP Lainnya'].real === 0 ? '-' : formatIDR(t['PNBP Lainnya'].real, false)}</td>
+        <td class="text-center">${getPct(t['PNBP Lainnya'].real, t['PNBP Lainnya'].target)}</td>
+      </tr>
+      <tr class="total-row">
+        <td colspan="2" class="text-center">Total</td>
+        <td class="text-right">${formatIDR(totalTarget, false)}</td>
+        <td class="text-right">${formatIDR(totalReal, false)}</td>
+        <td class="text-center">${totalPct}</td>
+      </tr>
+      <tr>
+        <td colspan="5" style="font-style: italic; background-color: #f7fafc;">Sesuai Kode Billing Kemenkeu</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">421 - SDA</td>
+        <td class="text-right">${formatIDR(sdaTarget, false)}</td>
+        <td class="text-right">${formatIDR(sdaReal, false)}</td>
+        <td class="text-center">${getPct(sdaReal, sdaTarget)}</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">424 - BLU</td>
+        <td class="text-right">${formatIDR(bluTarget, false)}</td>
+        <td class="text-right">${formatIDR(bluReal, false)}</td>
+        <td class="text-center">${getPct(bluReal, bluTarget)}</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">425 - Lainnya</td>
+        <td class="text-right">${formatIDR(lainnyaTarget, false)}</td>
+        <td class="text-right">${formatIDR(lainnyaReal, false)}</td>
+        <td class="text-center">${getPct(lainnyaReal, lainnyaTarget)}</td>
+      </tr>
+      <tr class="total-row">
+        <td colspan="2" class="text-center">Total</td>
+        <td class="text-right">${formatIDR(totalTarget, false)}</td>
+        <td class="text-right">${formatIDR(totalReal, false)}</td>
+        <td class="text-center">${totalPct}</td>
+      </tr>
+    `;
+    }
+  </script>
+
+
+  <script>
+    // Active state data in memory
+    let masterData = [];
+    let capaian2026Data = [];
+
+    // Active filters for Page 1
+    let activeFilters = {
+      tahun: [],
+      bulan: [],
+      es1: "",
+      satker: "",
+      akun: ""
+    };
+
+    // Toggle states
+    let yoyPnbpType = 3; // 3 or 6 categories
+    let capaianJenisType = 6; // 3 or 6 categories
+    let historicalViewType = 'all'; // 'all' or '5y'
+
+    // Charts references
+    let yoyColumnChartRef = null;
+    let monthlyTrendChartRef = null;
+    let compositionPieChartRef = null;
+    let capaianBarChartRef = null;
+    let historicalStackedChartRef = null;
+
+    // Helper to format currency in Rupiah
+    function formatIDR(val, withSymbol = true) {
+      if (val === null || val === undefined || isNaN(val)) return "-";
+      const formatted = new Intl.NumberFormat('id-ID', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      }).format(val);
+      return withSymbol ? "Rp " + formatted : formatted;
+    }
+
+    function formatMiliar(val) {
+      if (val === null || val === undefined || isNaN(val)) return "-";
+      const mil = val / 1e9;
+      return new Intl.NumberFormat('id-ID', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(mil) + " M";
+    }
+
+    function formatTriliun(val) {
+      if (val === null || val === undefined || isNaN(val)) return "-";
+      const tril = val / 1e12;
+      return new Intl.NumberFormat('id-ID', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(tril) + " Triliun";
+    }
+
+
+    // Drill-down for Pie Chart
+    function showPieDrilldown(jenisLabel) {
+      const container = document.getElementById('pie-drilldown-container');
+      const tbody = document.getElementById('pie-drilldown-tbody');
+      const title = document.getElementById('pie-drilldown-title');
+
+      container.style.display = 'block';
+      title.innerText = jenisLabel;
+      tbody.innerHTML = '';
+
+      const filteredMaster = getFilteredMasterData();
+      let details = [];
+
+      filteredMaster.forEach(d => {
+        let j = classifyRow(d).cat3;
+        if (j === jenisLabel) {
+          details.push({
+            satker: SATKER_MAP[d[3]] || d[3],
+            akun: AKUN_MAP[d[4]] || d[4],
+            nilai: d[5] || 0
+          });
+        }
+      });
+
+      // Aggregate by Satker + Akun
+      let agg = {};
+      details.forEach(d => {
+        const key = d.satker + "|||" + d.akun;
+        if (!agg[key]) agg[key] = { s: d.satker, a: d.akun, n: 0 };
+        agg[key].n += d.nilai;
+      });
+
+      let sorted = Object.values(agg).sort((a, b) => b.n - a.n);
+
+      if (sorted.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center">Tidak ada rincian data.</td></tr>';
+        return;
+      }
+
+      sorted.forEach(row => {
+        tbody.innerHTML += `<tr><td>${row.s}</td><td>${row.a}</td><td class="text-right">${formatIDR(row.n, false)}</td></tr>`;
+      });
+    }
+
+    // Document ready initializer
+    window.addEventListener('DOMContentLoaded', () => {
+      // Load default data
+      masterData = DEFAULT_MASTER_DATA;
+      capaian2026Data = DEFAULT_CAPAIAN_DATA;
+
+      // Set initial filters to include all by default
+      const availableYears = [...new Set(masterData.map(d => d[0]))].sort();
+      activeFilters.tahun = [...availableYears];
+
+      const availableMonths = [...new Set(masterData.map(d => d[1]))].sort((a, b) => a - b);
+      activeFilters.bulan = [...availableMonths];
+
+      // Initialize UI Filters list
+      initFilterUI(availableYears, availableMonths);
+
+      // Synchronize multi-level filters
+      syncFilters();
+
+      // Redraw dashboard
+      updateDashboard();
+
+      // Setup file input listener for dynamic excel uploads
+      document.getElementById('excel-file-input').addEventListener('change', handleExcelUpload);
+
+      // Handle closing searchable select dropdowns when clicking outside
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.custom-select-container')) {
+          document.querySelectorAll('.custom-select-dropdown').forEach(dropdown => {
+            dropdown.classList.remove('open');
+          });
+        }
+      });
+    });
+
+    // Switch Tab Navigation
+    function switchTab(evt, tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+
+      evt.currentTarget.classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+
+      // Redraw charts to fit container size in case layout shifts
+      setTimeout(() => {
+        if (yoyColumnChartRef) yoyColumnChartRef.resize();
+        if (monthlyTrendChartRef) monthlyTrendChartRef.resize();
+        if (compositionPieChartRef) compositionPieChartRef.resize();
+        if (capaianBarChartRef) capaianBarChartRef.resize();
+        if (historicalStackedChartRef) historicalStackedChartRef.resize();
+      }, 150);
+    }
+
+    // Populate Filter Checkboxes on Page 1
+    const monthNames = {
+      1: "Januari", 2: "Februari", 3: "Maret", 4: "April", 5: "Mei", 6: "Juni",
+      7: "Juli", 8: "Agustus", 9: "September", 10: "Oktober", 11: "November", 12: "Desember"
+    };
+
+    function initFilterUI(years, months) {
+      // 1. Years list
+      const yearContainer = document.getElementById('filter-tahun-list');
+      yearContainer.innerHTML = '';
+
+      years.forEach(yr => {
+        const label = document.createElement('label');
+        label.className = 'checkbox-item';
+        label.innerHTML = `<input type="checkbox" value="${yr}" checked onchange="toggleYearFilter(this)"> ${yr}`;
+        yearContainer.appendChild(label);
+      });
+
+      // 2. Months list
+      const monthContainer = document.getElementById('filter-bulan-list');
+      monthContainer.innerHTML = '';
+      months.forEach(m => {
+        const label = document.createElement('label');
+        label.className = 'checkbox-item';
+        label.innerHTML = `<input type="checkbox" value="${m}" checked onchange="toggleMonthFilter(this)"> ${monthNames[m] || m}`;
+        monthContainer.appendChild(label);
+      });
+    }
+
+    // Toggle Year Checkboxes
+    function toggleYearFilter(el) {
+      const val = parseInt(el.value);
+      if (el.checked) {
+        if (!activeFilters.tahun.includes(val)) activeFilters.tahun.push(val);
+      } else {
+        activeFilters.tahun = activeFilters.tahun.filter(v => v !== val);
+      }
+      syncFilters();
+      updateDashboard();
+    }
+
+    // Toggle Month Checkboxes
+    function toggleMonthFilter(el) {
+      const val = parseInt(el.value);
+      if (el.checked) {
+        if (!activeFilters.bulan.includes(val)) activeFilters.bulan.push(val);
+      } else {
+        activeFilters.bulan = activeFilters.bulan.filter(v => v !== val);
+      }
+      syncFilters();
+      updateDashboard();
+    }
+
+    // Custom Dropdowns open/close
+    function toggleDropdown(dropdownId) {
+      const dropdown = document.getElementById(dropdownId);
+      const isOpen = dropdown.classList.contains('open');
+
+      // Close all other dropdowns
+      document.querySelectorAll('.custom-select-dropdown').forEach(d => d.classList.remove('open'));
+
+      if (!isOpen) {
+        dropdown.classList.add('open');
+        const searchInput = dropdown.querySelector('input');
+        if (searchInput) {
+          searchInput.value = '';
+          searchInput.focus();
+          filterOptions(dropdownId, '');
+        }
+      }
+    }
+
+    // Filter searchable select options list
+    function filterOptions(dropdownId, searchVal) {
+      const dropdown = document.getElementById(dropdownId);
+      const options = dropdown.querySelectorAll('.select-option');
+      const query = searchVal.toLowerCase().trim();
+
+      options.forEach(opt => {
+        const text = opt.innerText.toLowerCase();
+        if (text.includes(query) || opt.getAttribute('data-value') === "") {
+          opt.style.display = 'block';
+        } else {
+          opt.style.display = 'none';
+        }
+      });
+    }
+
+    // Multi-level synchronization of filters
+    function syncFilters() {
+      // Determine which master rows pass the current active filters of higher levels (Tahun & Bulan)
+      let filteredMaster = masterData.filter(d =>
+        activeFilters.tahun.includes(d[0]) &&
+        activeFilters.bulan.includes(d[1])
+      );
+
+      // 1. Re-populate Eselon I options list based on active data
+      const activeES1 = [...new Set(filteredMaster.map(d => d[2]))].filter(x => x).sort();
+      const es1List = document.getElementById('options-es1-list');
+      es1List.innerHTML = '<li class="select-option selected" data-value="" onclick="selectOption(\'es1\', \'\', \'Semua Eselon I\')">Semua Eselon I</li>';
+
+      activeES1.forEach(code => {
+        const name = ESELON_MAP[code] || `Eselon I - ${code}`;
+        const isSelected = activeFilters.es1 === code;
+        const li = document.createElement('li');
+        li.className = `select-option ${isSelected ? 'selected' : ''}`;
+        li.setAttribute('data-value', code);
+        li.innerText = `${code} - ${name}`;
+        li.title = `${code} - ${name}`;
+        li.onclick = () => selectOption('es1', code, `${code} - ${name}`);
+        es1List.appendChild(li);
+      });
+
+      // If current selected ES1 is no longer available in filtered dataset, reset it
+      if (activeFilters.es1 && !activeES1.includes(activeFilters.es1)) {
+        activeFilters.es1 = "";
+        document.getElementById('trigger-es1-text').innerText = "Semua Eselon I";
+      }
+
+      // Filter master further by ES1
+      if (activeFilters.es1) {
+        filteredMaster = filteredMaster.filter(d => d[2] === activeFilters.es1);
+      }
+
+      // 2. Re-populate Satker options list
+      const activeSatker = [...new Set(filteredMaster.map(d => d[3]))].filter(x => x).sort();
+      const satkerList = document.getElementById('options-satker-list');
+      satkerList.innerHTML = '<li class="select-option selected" data-value="" onclick="selectOption(\'satker\', \'\', \'Semua Satuan Kerja\')">Semua Satuan Kerja</li>';
+
+      activeSatker.forEach(code => {
+        const name = SATKER_MAP[code] || `Satker ${code}`;
+        const isSelected = activeFilters.satker === code;
+        const li = document.createElement('li');
+        li.className = `select-option ${isSelected ? 'selected' : ''}`;
+        li.setAttribute('data-value', code);
+        li.innerText = `${code} - ${name}`;
+        li.title = `${code} - ${name}`;
+        li.onclick = () => selectOption('satker', code, `${code} - ${name}`);
+        satkerList.appendChild(li);
+      });
+
+      if (activeFilters.satker && !activeSatker.includes(activeFilters.satker)) {
+        activeFilters.satker = "";
+        document.getElementById('trigger-satker-text').innerText = "Semua Satuan Kerja";
+      }
+
+      // Filter master further by Satker
+      if (activeFilters.satker) {
+        filteredMaster = filteredMaster.filter(d => d[3] === activeFilters.satker);
+      }
+
+      // 3. Re-populate Akun options list
+      const activeAkun = [...new Set(filteredMaster.map(d => d[4]))].filter(x => x).sort();
+      const akunList = document.getElementById('options-akun-list');
+      akunList.innerHTML = '<li class="select-option selected" data-value="" onclick="selectOption(\'akun\', \'\', \'Semua Akun\')">Semua Akun</li>';
+
+      activeAkun.forEach(code => {
+        const name = AKUN_MAP[code] || `Akun ${code}`;
+        const isSelected = activeFilters.akun === code;
+        const li = document.createElement('li');
+        li.className = `select-option ${isSelected ? 'selected' : ''}`;
+        li.setAttribute('data-value', code);
+        li.innerText = `${code} - ${name}`;
+        li.title = `${code} - ${name}`;
+        li.onclick = () => selectOption('akun', code, `${code} - ${name}`);
+        akunList.appendChild(li);
+      });
+
+      if (activeFilters.akun && !activeAkun.includes(activeFilters.akun)) {
+        activeFilters.akun = "";
+        document.getElementById('trigger-akun-text').innerText = "Semua Akun";
+      }
+    }
+
+    // Handle option selection
+    function selectOption(type, value, label) {
+      activeFilters[type] = value;
+
+      // Update trigger text
+      const triggerId = `trigger-${type}-text`;
+      document.getElementById(triggerId).innerText = label;
+
+      // Close dropdown
+      const dropdownId = `dropdown-${type}`;
+      document.getElementById(dropdownId).classList.remove('open');
+
+      // Re-synchronize lower filters and update view
+      syncFilters();
+      updateDashboard();
+    }
+
+    function resetFiltersRekap() {
+      document.querySelectorAll('#filter-tahun-list input[type="checkbox"]').forEach(cb => cb.checked = true);
+      document.querySelectorAll('#filter-bulan-list input[type="checkbox"]').forEach(cb => cb.checked = true);
+
+      const availableYears = [...new Set(masterData.map(d => d[0]))].sort();
+      const availableMonths = [...new Set(masterData.map(d => d[1]))].sort((a, b) => a - b);
+
+      activeFilters.tahun = [...availableYears];
+      activeFilters.bulan = [...availableMonths];
+      syncFilters();
+      updateDashboard();
+    }
+
+    function resetFiltersCapaian() {
+      activeFilters.es1 = "";
+      activeFilters.satker = "";
+      activeFilters.akun = "";
+      document.getElementById('trigger-es1-text').innerText = "Semua Eselon I";
+      document.getElementById('trigger-satker-text').innerText = "Semua Satuan Kerja";
+      document.getElementById('trigger-akun-text').innerText = "Semua Akun";
+      syncFilters();
+      updateDashboard();
+    }
+
+
+    // Toggles for charts
+    function toggleYoyPNBP(type) {
+      yoyPnbpType = type;
+      document.querySelectorAll('#toggle-yoy-pnbp-type .toggle-item').forEach((btn, idx) => {
+        btn.classList.toggle('active', (idx === 0 && type === 3) || (idx === 1 && type === 6));
+      });
+      renderYoyColumnChart();
+    }
+
+    // Toggle Capaian Jenis
+    function toggleCapaianJenis(type) {
+      capaianJenisType = type;
+      document.querySelectorAll('#toggle-capaian-jenis .toggle-item').forEach((btn, idx) => {
+        btn.classList.toggle('active', (idx === 0 && type === 6) || (idx === 1 && type === 3));
+      });
+      renderCapaianBarChart();
+    }
+
+    // Toggle Historical Years
+    function toggleHistoricalYears(view) {
+      historicalViewType = view;
+      document.querySelectorAll('#toggle-historical-years .toggle-item').forEach((btn, idx) => {
+        btn.classList.toggle('active', (idx === 0 && view === 'all') || (idx === 1 && view === '5y'));
+      });
+      renderHistoricalStackedChart();
+
+      // 3. Additional Analytics (AI Insight) & Akun Table
+      generateInsights();
+      renderCapaianAkunTable();
+    }
+
+    // Primary update loop
+    function updateDashboard() {
+      // 1. Calculate & Render Page 1 metrics and charts
+      calculatePage1Metrics();
+      renderYoyColumnChart();
+      renderMonthlyTrendChart();
+      renderCompositionPieChart();
+      renderSummaryAnnualTable();
+
+      // 2. Calculate & Render Page 2 metrics and charts
+
+      // Update Capaian KPIs
+      const filteredCapaian = capaian2026Data.filter(d => {
+        const passEs1 = !activeFilters.es1 || d[0] === activeFilters.es1;
+        const passSatker = !activeFilters.satker || d[1] === activeFilters.satker;
+        const passAkun = !activeFilters.akun || d[2] === activeFilters.akun;
+        return passEs1 && passSatker && passAkun;
+      });
+
+      let totalTarget2026 = 0;
+      let totalReal2026 = 0;
+      let satkerTotals = {};
+
+      filteredCapaian.forEach(d => {
+        totalTarget2026 += (d[3] || 0);
+        totalReal2026 += (d[4] || 0);
+        if (!satkerTotals[d[1]]) satkerTotals[d[1]] = 0;
+        satkerTotals[d[1]] += (d[4] || 0);
+      });
+
+      document.getElementById('kpi-capaian-realisasi').innerText = formatIDR(totalReal2026);
+      document.getElementById('kpi-capaian-pct').innerText = totalTarget2026 > 0 ? (totalReal2026 / totalTarget2026 * 100).toFixed(2) + '%' : '0.00%';
+
+      let topSatkerCapaian = Object.keys(satkerTotals).reduce((a, b) => satkerTotals[a] > satkerTotals[b] ? a : b, "");
+      if (topSatkerCapaian) {
+        document.getElementById('kpi-capaian-top-contrib').innerText = SATKER_MAP[topSatkerCapaian] || topSatkerCapaian;
+      } else {
+        document.getElementById('kpi-capaian-top-contrib').innerText = "-";
+      }
+
+      calculatePage2Metrics();
+      renderCapaianBarChart();
+      renderES1CapaianTable();
+      renderHistoricalStackedChart();
+
+      // 3. Additional Analytics (AI Insight) & Akun Table
+      generateInsights();
+      renderCapaianAkunTable();
+    }
+
+    // Master Row Format: [Tahun, No_Bulan, Kode_ES1, Kode_Satker, Akun, Nilai, Jenis_PNBP_ID]
+    // 0 = Lainnya, 1 = BLU, 2 = Perizinan, 3 = SDA
+    function classifyRow(row) {
+      const year = row[0];
+      const month = row[1];
+      const es1 = row[2];
+      const satker = row[3];
+      const account = row[4];
+      const value = row[5];
+      const jenisId = row[6];
+
+      let cat3 = "Lainnya";
+      let cat6 = "PNBP Lainnya";
+
+      if (jenisId === 3) { // SDA
+        cat3 = "SDA";
+        if (account === "421541") {
+          cat6 = "SDA Sedimentasi";
+        } else {
+          cat6 = "SDA Perikanan";
+        }
+      } else if (jenisId === 1) { // BLU
+        cat3 = "BLU";
+        if (satker === "660056") {
+          cat6 = "BLU LPMUKP";
+        } else {
+          cat6 = "BLU Lainnya";
+        }
+      } else if (jenisId === 2) { // Perizinan
+        cat3 = "Lainnya";
+        cat6 = "PNBP Perizinan";
+      } else { // Lainnya (which may contain accounts that should be classified)
+        if (account === "425259") {
+          cat3 = "Lainnya";
+          cat6 = "PNBP Perizinan";
+        } else {
+          cat3 = "Lainnya";
+          cat6 = "PNBP Lainnya";
+        }
+      }
+      return { cat3, cat6 };
+    }
+
+    // Classify 2026 rows
+    function classifyCapaianRow(row) {
+      const es1 = row[0];
+      const satker = row[1];
+      const akun = row[2];
+      const target = row[3];
+      const span = row[4];
+      const simponi = row[5];
+
+      let cat3 = "Lainnya";
+      let cat6 = "PNBP Lainnya";
+
+      if (akun.startsWith("421")) {
+        cat3 = "SDA";
+        if (akun === "421541") {
+          cat6 = "SDA Sedimentasi";
+        } else {
+          cat6 = "SDA Perikanan";
+        }
+      } else if (akun.startsWith("424")) {
+        cat3 = "BLU";
+        if (satker === "660056") {
+          cat6 = "BLU LPMUKP";
+        } else {
+          cat6 = "BLU Lainnya";
+        }
+      } else if (akun === "425259") {
+        cat3 = "Lainnya";
+        cat6 = "PNBP Perizinan";
+      } else {
+        cat3 = "Lainnya";
+        cat6 = "PNBP Lainnya";
+      }
+
+      return { cat3, cat6 };
+    }
+
+    // Filter Master Data
+    function getFilteredMasterData() {
+      return masterData.filter(row => {
+        const year = row[0];
+        const month = row[1];
+        const es1 = row[2];
+        const satker = row[3];
+        const account = row[4];
+
+        const passTahun = activeFilters.tahun.includes(year);
+        const passBulan = activeFilters.bulan.includes(month);
+        const passEs1 = !activeFilters.es1 || es1 === activeFilters.es1;
+        const passSatker = !activeFilters.satker || satker === activeFilters.satker;
+        const passAkun = !activeFilters.akun || account === activeFilters.akun;
+
+        return passTahun && passBulan && passEs1 && passSatker && passAkun;
+      });
+    }
+
+    // --- PAGE 1 LOGIC & CALCULATIONS ---
+    let page1TotalRealisasi = 0;
+    let page1AnnualStats = {}; // { year: { SDA: x, BLU: y, Lainnya: z, total: w } }
+
+    function calculatePage1Metrics() {
+      const filtered = getFilteredMasterData();
+      page1TotalRealisasi = filtered.reduce((sum, d) => sum + d[5], 0);
+
+      // Display total realisasi KPI
+      document.getElementById('kpi-total-realisasi').innerText = formatIDR(page1TotalRealisasi);
+
+      // Calculate stats per year
+      page1AnnualStats = {};
+      // Seed with selected years
+      activeFilters.tahun.forEach(yr => {
+        page1AnnualStats[yr] = { "SDA": 0, "BLU": 0, "Lainnya": 0, "total": 0 };
+      });
+
+      filtered.forEach(d => {
+        const yr = d[0];
+        const val = d[5];
+        const cats = classifyRow(d);
+
+        if (!page1AnnualStats[yr]) {
+          page1AnnualStats[yr] = { "SDA": 0, "BLU": 0, "Lainnya": 0, "total": 0 };
+        }
+
+        page1AnnualStats[yr][cats.cat3] += val;
+        page1AnnualStats[yr].total += val;
+      });
+
+      // Calculate YoY Growth Rates
+      const yearsSorted = Object.keys(page1AnnualStats).map(y => parseInt(y)).sort((a, b) => a - b);
+      let growthSum = 0;
+      let growthCount = 0;
+
+      for (let i = 1; i < yearsSorted.length; i++) {
+        const prevTotal = page1AnnualStats[yearsSorted[i - 1]].total;
+        const currTotal = page1AnnualStats[yearsSorted[i]].total;
+        if (prevTotal > 0) {
+          const growth = (currTotal - prevTotal) / prevTotal;
+          growthSum += growth;
+          growthCount++;
+        }
+      }
+
+      const avgGrowth = growthCount > 0 ? (growthSum / growthCount) * 100 : 0.0;
+      const growthKpiEl = document.getElementById('kpi-yoy-growth');
+      growthKpiEl.innerText = (avgGrowth >= 0 ? "+" : "") + avgGrowth.toFixed(2) + "%";
+
+      // Setup growth visual color class
+      const kpiCard = growthKpiEl.parentElement;
+      if (avgGrowth > 0) {
+        document.getElementById('kpi-yoy-desc').className = "kpi-desc positive";
+        document.getElementById('kpi-yoy-desc').innerHTML = `<i class="fa-solid fa-arrow-trend-up"></i> YoY meningkat rata-rata`;
+      } else if (avgGrowth < 0) {
+        document.getElementById('kpi-yoy-desc').className = "kpi-desc negative";
+        document.getElementById('kpi-yoy-desc').innerHTML = `<i class="fa-solid fa-arrow-trend-down"></i> YoY menurun rata-rata`;
+      } else {
+        document.getElementById('kpi-yoy-desc').className = "kpi-desc";
+        document.getElementById('kpi-yoy-desc').innerHTML = `Tidak ada pertumbuhan terhitung`;
+      }
+
+      // Determine top contributor category
+      let catsTotals = { "SDA": 0, "BLU": 0, "Lainnya": 0 };
+      filtered.forEach(d => {
+        const cats = classifyRow(d);
+        catsTotals[cats.cat3] += d[5];
+      });
+
+      let topCat = "-";
+      let topVal = -1;
+      for (const [c, val] of Object.entries(catsTotals)) {
+        if (val > topVal && val > 0) {
+          topVal = val;
+          topCat = c === "SDA" ? "SDA Perikanan" : c === "BLU" ? "BLU KKP" : "PNBP Lainnya/Perizinan";
+        }
+      }
+
+      const pct = page1TotalRealisasi > 0 ? (topVal / page1TotalRealisasi) * 100 : 0;
+      document.getElementById('kpi-top-contrib').innerText = topCat;
+      document.getElementById('kpi-top-desc').innerText = topVal > 0 ? `${pct.toFixed(1)}% dari total realisasi` : "Tidak ada kontribusi";
+    }
+
+    // Page 1: YoY Column Chart
+    function renderYoyColumnChart() {
+      const ctx = document.getElementById('yoyColumnChart').getContext('2d');
+      if (yoyColumnChartRef) yoyColumnChartRef.destroy();
+
+      const filtered = getFilteredMasterData();
+      const sortedYears = [...activeFilters.tahun].sort((a, b) => a - b);
+
+      // Group values by year and category
+      let datasetMap = {};
+      const catKeys3 = ["SDA", "BLU", "Lainnya"];
+      const catKeys6 = ["SDA Sedimentasi", "SDA Perikanan", "BLU LPMUKP", "BLU Lainnya", "PNBP Perizinan", "PNBP Lainnya"];
+      const activeCats = yoyPnbpType === 3 ? catKeys3 : catKeys6;
+
+      sortedYears.forEach(yr => {
+        datasetMap[yr] = {};
+        activeCats.forEach(c => datasetMap[yr][c] = 0);
+      });
+
+      filtered.forEach(d => {
+        const yr = d[0];
+        const val = d[5];
+        const cats = classifyRow(d);
+        const catKey = yoyPnbpType === 3 ? cats.cat3 : cats.cat6;
+
+        if (datasetMap[yr] && datasetMap[yr][catKey] !== undefined) {
+          datasetMap[yr][catKey] += val;
+        }
+      });
+
+      // Chart.js configuration
+      const labels = sortedYears.map(String);
+
+      // Define clean color mappings
+      const colorsMap = {
+        "SDA": "#002060",
+        "SDA Perikanan": "#002060",
+        "SDA Sedimentasi": "#5B9BD5",
+        "BLU": "#2B78C5",
+        "BLU LPMUKP": "#2B78C5",
+        "BLU Lainnya": "#548C78",
+        "Lainnya": "#A6C9EC",
+        "PNBP Perizinan": "#A6C9EC",
+        "PNBP Lainnya": "#DCEAF7"
+      };
+
+      const chartDatasets = activeCats.map(cat => {
+        const data = sortedYears.map(yr => datasetMap[yr][cat] / 1e9); // Convert to Miliar for readable charts
+        return {
+          label: cat,
+          data: data,
+          backgroundColor: colorsMap[cat] || "#a0aec0",
+          borderColor: "white",
+          borderWidth: 1
+        };
+      });
+
+      yoyColumnChartRef = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: chartDatasets
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { boxWidth: 12, font: { family: 'Inter', size: 10 } }
+            },
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' Miliar';
+                }
+              }
+            }
+          },
+          scales: {
+            x: { stacked: true },
+            y: {
+              stacked: true,
+              title: { display: true, text: 'Miliar Rupiah', font: { family: 'Inter', weight: 'bold' } },
+              ticks: { callback: value => value + ' M' }
+            }
+          }
+        }
+      });
+    }
+
+    // Page 1: Monthly Line Chart
+    function renderMonthlyTrendChart() {
+      const ctx = document.getElementById('monthlyTrendChart').getContext('2d');
+      if (monthlyTrendChartRef) monthlyTrendChartRef.destroy();
+
+      const filtered = getFilteredMasterData();
+      const sortedYears = [...activeFilters.tahun].sort((a, b) => a - b);
+
+      // We will render a line for each year, showing values from Month 1 to 12
+      let monthlyData = {}; // { year: [val_m1, val_m2, ..., val_m12] }
+      sortedYears.forEach(yr => {
+        monthlyData[yr] = Array(12).fill(0);
+      });
+
+      filtered.forEach(d => {
+        const yr = d[0];
+        const mIdx = d[1] - 1; // 1-indexed to 0-indexed
+        const val = d[5];
+        if (monthlyData[yr] && mIdx >= 0 && mIdx < 12) {
+          monthlyData[yr][mIdx] += val;
+        }
+      });
+
+      // Color list for lines
+      const lineColors = {
+        2020: "#cbd5e0", // light gray
+        2021: "#a0aec0", // darker gray
+        2022: "#A6C9EC", // light blue
+        2023: "#718096", // slate gray
+        2024: "#FFC000", // gold
+        2025: "#002060"  // navy
+      };
+
+      const monthsLabels = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
+
+      const datasets = sortedYears.map(yr => {
+        const dataInM = monthlyData[yr].map(val => val / 1e9); // Convert to Miliar
+        const color = lineColors[yr] || "#4a5568";
+        return {
+          label: "Tahun " + yr,
+          data: dataInM,
+          borderColor: color,
+          backgroundColor: color,
+          borderWidth: yr === 2025 || yr === 2024 ? 3 : 1.5,
+          tension: 0.15,
+          fill: false,
+          pointRadius: 3
+        };
+      });
+
+      monthlyTrendChartRef = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: monthsLabels,
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { boxWidth: 12, font: { family: 'Inter', size: 10 } }
+            },
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' Miliar';
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              title: { display: true, text: 'Miliar Rupiah', font: { family: 'Inter', weight: 'bold' } },
+              ticks: { callback: value => value + ' M' }
+            }
+          }
+        }
+      });
+    }
+
+    // Page 1: Composition Pie Chart (showing 3 or 6 categories composition)
+    function renderCompositionPieChart() {
+      const ctx = document.getElementById('compositionPieChart').getContext('2d');
+      if (compositionPieChartRef) compositionPieChartRef.destroy();
+
+      const filtered = getFilteredMasterData();
+
+      let compositionTotals = { "SDA": 0, "BLU": 0, "Lainnya": 0 };
+      filtered.forEach(d => {
+        const cats = classifyRow(d);
+        compositionTotals[cats.cat3] += d[5];
+      });
+
+      const total = Object.values(compositionTotals).reduce((sum, v) => sum + v, 0);
+      const labels = Object.keys(compositionTotals);
+      const data = labels.map(l => total > 0 ? (compositionTotals[l] / total) * 100 : 0);
+      const amounts = labels.map(l => compositionTotals[l]);
+
+      // Fill UI Legend
+      const legendWrapper = document.getElementById('composition-legend-wrapper');
+      legendWrapper.innerHTML = '';
+      labels.forEach((l, idx) => {
+        const item = document.createElement('div');
+        item.className = 'stat-item';
+        item.innerHTML = `
+        <div class="stat-item-label">${l === 'SDA' ? 'SDA Perikanan' : l === 'BLU' ? 'BLU KKP' : 'PNBP Lainnya'}</div>
+        <div class="stat-item-val" style="font-size:1rem;">${data[idx].toFixed(1)}% <span style="font-size:0.8rem; font-weight:normal; color:#4a5568;">(${formatMiliar(amounts[idx])})</span></div>
+      `;
+        legendWrapper.appendChild(item);
+      });
+
+      compositionPieChartRef = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: amounts.map(v => v / 1e9),
+            backgroundColor: ["#002060", "#2B78C5", "#A6C9EC"],
+            hoverOffset: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+
+          onClick: (evt, activeElements) => {
+            if (activeElements.length > 0) {
+              const datasetIndex = activeElements[0].datasetIndex;
+              const dataIndex = activeElements[0].index;
+              const label = compositionPieChartRef.data.labels[dataIndex];
+              showPieDrilldown(label);
+            }
+          },
+
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  const val = context.parsed;
+                  const percentage = total > 0 ? ((val * 1e9) / total * 100).toFixed(1) : 0;
+                  return context.label + ': ' + val.toFixed(2) + ' Miliar (' + percentage + '%)';
+                }
+              }
+            }
+          },
+          cutout: '65%'
+        }
+      });
+    }
+
+    // Page 1: Ringkasan Realisasi per Tahun Table
+    function renderSummaryAnnualTable() {
+      const tbody = document.getElementById('summary-annual-tbody');
+      tbody.innerHTML = '';
+
+      const sortedYears = Object.keys(page1AnnualStats).map(y => parseInt(y)).sort((a, b) => a - b);
+
+      sortedYears.forEach((yr, idx) => {
+        const stats = page1AnnualStats[yr];
+        const prevYr = yr - 1;
+        const prevStats = page1AnnualStats[prevYr] || null;
+
+        let growthText = "-";
+        let badgeClass = "";
+
+        if (prevStats && prevStats.total > 0) {
+          const growth = ((stats.total - prevStats.total) / prevStats.total) * 100;
+          growthText = (growth >= 0 ? "+" : "") + growth.toFixed(1) + "%";
+          badgeClass = growth >= 0 ? "badge-percent success" : "badge-percent danger";
+        } else {
+          // Look up in absolute data if exists
+          const rawPrevData = masterData.filter(d => d[0] === prevYr);
+          if (rawPrevData.length > 0) {
+            const rawPrevSum = rawPrevData.reduce((sum, d) => sum + d[5], 0);
+            if (rawPrevSum > 0) {
+              const growth = ((stats.total - rawPrevSum) / rawPrevSum) * 100;
+              growthText = (growth >= 0 ? "+" : "") + growth.toFixed(1) + "%";
+              badgeClass = growth >= 0 ? "badge-percent success" : "badge-percent danger";
+            }
+          }
+        }
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+        <td><strong>${yr}</strong></td>
+        <td class="text-right">${formatIDR(stats.SDA, false)}</td>
+        <td class="text-right">${formatIDR(stats.BLU, false)}</td>
+        <td class="text-right">${formatIDR(stats.Lainnya, false)}</td>
+        <td class="text-right" style="font-weight:600; color:var(--navy);">${formatIDR(stats.total, false)}</td>
+        <td class="text-center">${growthText !== '-' ? `<span class="${badgeClass}">${growthText}</span>` : '-'}</td>
+      `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // --- PAGE 2 LOGIC & CALCULATIONS (Capaian 2026) ---
+    let page2TotalTarget = 0;
+    let page2TotalRealisasiSpan = 0;
+    let page2TotalRealisasiSimponi = 0;
+    let es1DataMap = {}; // { kode: { target: x, span: y, simponi: z } }
+    let categoryCapaianMap = {}; // { catKey: { target: x, span: y, simponi: z } }
+
+    function calculatePage2Metrics() {
+      page2TotalTarget = 0;
+      page2TotalRealisasiSpan = 0;
+      page2TotalRealisasiSimponi = 0;
+      es1DataMap = {};
+      categoryCapaianMap = {};
+
+      // Seed Eselon I
+      const es1CodesList = ["3201", "3202", "3203", "3204", "3205", "3206", "3207", "3208", "3212", "3213"];
+      es1CodesList.forEach(code => {
+        es1DataMap[code] = { target: 0, span: 0, simponi: 0 };
+      });
+
+      capaian2026Data.forEach(d => {
+        const es1 = d[0];
+        const target = d[3];
+        const span = d[4];
+        const simponi = d[5];
+
+        // Calculate KKP total sums
+        page2TotalTarget += target;
+        page2TotalRealisasiSpan += span;
+        page2TotalRealisasiSimponi += simponi;
+
+        // Accumulate per Eselon I
+        if (es1DataMap[es1]) {
+          es1DataMap[es1].target += target;
+          es1DataMap[es1].span += span;
+          es1DataMap[es1].simponi += simponi;
+        }
+
+        // Classify for PNBP categories
+        const cats = classifyCapaianRow(d);
+        const cat6 = cats.cat6;
+        const cat3 = cats.cat3;
+
+        const activeCatKey = capaianJenisType === 6 ? cat6 : cat3;
+        if (!categoryCapaianMap[activeCatKey]) {
+          categoryCapaianMap[activeCatKey] = { target: 0, span: 0, simponi: 0 };
+        }
+        categoryCapaianMap[activeCatKey].target += target;
+        categoryCapaianMap[activeCatKey].span += span;
+        categoryCapaianMap[activeCatKey].simponi += simponi;
+      });
+
+      // Populate Page 2 KPI highlights
+      document.getElementById('capaian-highlight-total').innerText = formatTriliun(page2TotalRealisasiSpan);
+    }
+
+    // Page 2: Target vs Realisasi Bar Chart (horizontal)
+    function renderCapaianBarChart() {
+      const ctx = document.getElementById('capaianBarChart').getContext('2d');
+      if (capaianBarChartRef) capaianBarChartRef.destroy();
+
+      // Setup active categories
+      const catKeys3 = ["SDA", "BLU", "Lainnya"];
+      const catKeys6 = ["SDA Sedimentasi", "SDA Perikanan", "BLU LPMUKP", "BLU Lainnya", "PNBP Perizinan", "PNBP Lainnya"];
+      const activeCats = capaianJenisType === 6 ? catKeys6 : catKeys3;
+
+      // Filter values
+      const targets = activeCats.map(cat => (categoryCapaianMap[cat]?.target || 0) / 1e9); // Convert to Miliar
+      const realisasis = activeCats.map(cat => (categoryCapaianMap[cat]?.span || 0) / 1e9); // Convert to Miliar
+
+      // Colors mapping
+      const chartColors = {
+        "SDA": "#002060",
+        "SDA Perikanan": "#002060",
+        "SDA Sedimentasi": "#5B9BD5",
+        "BLU": "#2B78C5",
+        "BLU LPMUKP": "#2B78C5",
+        "BLU Lainnya": "#548C78",
+        "Lainnya": "#A6C9EC",
+        "PNBP Perizinan": "#A6C9EC",
+        "PNBP Lainnya": "#BDD7EE"
+      };
+
+      const backgroundColors = activeCats.map(cat => chartColors[cat] || "#a0aec0");
+
+      capaianBarChartRef = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: activeCats,
+          datasets: [
+            {
+              label: 'Target (TPNBP)',
+              data: targets,
+              backgroundColor: '#cbd5e0',
+              borderColor: '#a0aec0',
+              borderWidth: 1,
+              barThickness: 14
+            },
+            {
+              label: 'Realisasi (SPAN)',
+              data: realisasis,
+              backgroundColor: backgroundColors,
+              borderColor: 'transparent',
+              borderWidth: 1,
+              barThickness: 14
+            }
+          ]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { font: { family: 'Inter', size: 10 } }
+            },
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  const label = context.dataset.label;
+                  const value = context.parsed.x;
+                  const cat = context.chart.data.labels[context.dataIndex];
+
+                  let pct = "";
+                  if (label.includes("Realisasi")) {
+                    const targetVal = categoryCapaianMap[cat]?.target || 0;
+                    const realVal = categoryCapaianMap[cat]?.span || 0;
+                    if (targetVal > 0) {
+                      pct = " (" + ((realVal / targetVal) * 100).toFixed(1) + "%)";
+                    }
+                  }
+                  return label + ': ' + value.toFixed(2) + ' Miliar' + pct;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              title: { display: true, text: 'Miliar Rupiah', font: { family: 'Inter', weight: 'bold' } },
+              ticks: { callback: value => value + ' M' }
+            }
+          }
+        }
+      });
+    }
+
+    // Page 2: Eselon I Capaian Table
+    function renderES1CapaianTable() {
+      const tbody = document.getElementById('es1-capaian-tbody');
+      tbody.innerHTML = '';
+
+      const es1Sequence = [
+        { code: "3201", label: "SETJEN" },
+        { code: "3202", label: "ITJEN" },
+        { code: "3203", label: "DJPT" },
+        { code: "3204", label: "DJPB" },
+        { code: "3205", label: "DJPSDKP" },
+        { code: "3206", label: "DJPDSPKP" },
+        { code: "3207", label: "DJPK" },
+        { code: "3208", label: "DJPRL" },
+        { code: "3212", label: "BPPSDMKP" },
+        { code: "3213", label: "BPPMHKP" }
+      ];
+
+      es1Sequence.forEach((es1Item, idx) => {
+        const code = es1Item.code;
+        const label = es1Item.label;
+        const stats = es1DataMap[code];
+
+        let targetText = "-";
+        let spanText = "-";
+        let pctText = "-";
+        let badgeClass = "";
+
+        if (stats && (stats.target > 0 || stats.span > 0)) {
+          targetText = stats.target > 0 ? formatIDR(stats.target, false) : "-";
+          spanText = stats.span > 0 ? formatIDR(stats.span, false) : "-";
+
+          if (stats.target > 0) {
+            const pct = (stats.span / stats.target) * 100;
+            pctText = pct.toFixed(2) + "%";
+
+            if (pct >= 80) badgeClass = "badge-percent success";
+            else if (pct >= 40) badgeClass = "badge-percent warning";
+            else badgeClass = "badge-percent danger";
+          } else if (stats.span > 0) {
+            // Realisasi exists, but target is 0 -> Infinite / DIV/0
+            pctText = "#DIV/0!";
+            badgeClass = "badge-percent success";
+          }
+        }
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+        <td class="text-center">${idx + 1}</td>
+        <td><strong>${label}</strong> <span style="font-size:0.75rem; color:#718096;">(${ESELON_MAP[code] || code})</span></td>
+        <td class="text-right">${targetText}</td>
+        <td class="text-right">${spanText}</td>
+        <td class="text-center">${pctText !== '-' ? `<span class="${badgeClass}">${pctText}</span>` : '-'}</td>
+      `;
+        tbody.appendChild(tr);
+      });
+
+      // Add JUMLAH Row
+      const kkpPct = page2TotalTarget > 0 ? (page2TotalRealisasiSpan / page2TotalTarget) * 100 : 0.0;
+      const trTotal = document.createElement('tr');
+      trTotal.className = 'total-row';
+      trTotal.innerHTML = `
+      <td></td>
+      <td>TOTAL</td>
+      <td class="text-right">${formatIDR(page2TotalTarget, false)}</td>
+      <td class="text-right">${formatIDR(page2TotalRealisasiSpan, false)}</td>
+      <td class="text-center"><span class="badge-percent" style="background-color:var(--gold); color:var(--navy); font-weight:800;">${kkpPct.toFixed(2)}%</span></td>
+    `;
+      tbody.appendChild(trTotal);
+    }
+
+    // Page 2: 12-Year Stacked Column + Line Chart
+    function renderHistoricalStackedChart() {
+      const ctx = document.getElementById('historicalStackedChart').getContext('2d');
+      if (historicalStackedChartRef) historicalStackedChartRef.destroy();
+
+      // 12-year historical data mapping (from Slide 4)
+      const years = ['2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026'];
+
+      let dynamicAnnualSums = {};
+      years.forEach(yr => {
+        dynamicAnnualSums[yr] = { "SDA": 0, "BLU": 0, "Lainnya": 0, "total": 0 };
+      });
+
+      // Hardcode 2014-2019 based on PPT
+      // SDA
+      dynamicAnnualSums['2014'].SDA = 214.45 * 1e9;
+      dynamicAnnualSums['2015'].SDA = 79.13 * 1e9;
+      dynamicAnnualSums['2016'].SDA = 362.08 * 1e9;
+      dynamicAnnualSums['2017'].SDA = 491.07 * 1e9;
+      dynamicAnnualSums['2018'].SDA = 448.75 * 1e9;
+      dynamicAnnualSums['2019'].SDA = 521.94 * 1e9;
+
+      // BLU
+      dynamicAnnualSums['2014'].BLU = 0;
+      dynamicAnnualSums['2015'].BLU = 0;
+      dynamicAnnualSums['2016'].BLU = 0;
+      dynamicAnnualSums['2017'].BLU = 0;
+      dynamicAnnualSums['2018'].BLU = 37.39 * 1e9;
+      dynamicAnnualSums['2019'].BLU = 71.79 * 1e9;
+
+      // Lainnya
+      dynamicAnnualSums['2014'].Lainnya = 52.96 * 1e9;
+      dynamicAnnualSums['2015'].Lainnya = 114.55 * 1e9;
+      dynamicAnnualSums['2016'].Lainnya = 191.33 * 1e9;
+      dynamicAnnualSums['2017'].Lainnya = 220.82 * 1e9;
+      dynamicAnnualSums['2018'].Lainnya = 286.30 * 1e9;
+      dynamicAnnualSums['2019'].Lainnya = 198.78 * 1e9;
+
+      for (let yr = 2014; yr <= 2019; yr++) {
+        dynamicAnnualSums[yr].total = dynamicAnnualSums[yr].SDA + dynamicAnnualSums[yr].BLU + dynamicAnnualSums[yr].Lainnya;
+      }
+
+      masterData.forEach(d => {
+        const yr = d[0];
+        const val = d[5];
+        const cats = classifyRow(d);
+        if (yr >= 2020 && yr <= 2025 && dynamicAnnualSums[yr]) {
+          dynamicAnnualSums[yr][cats.cat3] += val;
+          dynamicAnnualSums[yr].total += val;
+        }
+      });
+
+      capaian2026Data.forEach(d => {
+        const val = d[4]; // SPAN Realisasi
+        const cats = classifyCapaianRow(d);
+        const yr = 2026;
+        if (dynamicAnnualSums[yr]) {
+          dynamicAnnualSums[yr][cats.cat3] += val;
+          dynamicAnnualSums[yr].total += val;
+        }
+      });
+
+      const activeYears = historicalViewType === '5y' ? ['2022', '2023', '2024', '2025', '2026'] : years;
+
+      const sdaData = activeYears.map(yr => dynamicAnnualSums[yr].SDA / 1e9);
+      const bluData = activeYears.map(yr => dynamicAnnualSums[yr].BLU / 1e9);
+      const lainnyaData = activeYears.map(yr => dynamicAnnualSums[yr].Lainnya / 1e9);
+      const totalData = activeYears.map(yr => dynamicAnnualSums[yr].total / 1e9);
+
+      historicalStackedChartRef = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: activeYears,
+          datasets: [
+            {
+              type: 'line',
+              label: 'Total Realisasi',
+              data: totalData,
+              borderColor: '#002060',
+              backgroundColor: '#FFC000',
+              borderWidth: 2,
+              pointBackgroundColor: '#FFC000',
+              pointBorderColor: '#002060',
+              pointRadius: 6,
+              pointHoverRadius: 8,
+              tension: 0.1,
+              order: 1
+            },
+            {
+              type: 'bar',
+              label: 'PNBP SDA',
+              data: sdaData,
+              backgroundColor: '#002060',
+              order: 2
+            },
+            {
+              type: 'bar',
+              label: 'PNBP BLU',
+              data: bluData,
+              backgroundColor: '#2B78C5',
+              order: 3
+            },
+            {
+              type: 'bar',
+              label: 'PNBP Lainnya',
+              data: lainnyaData,
+              backgroundColor: '#A6C9EC',
+              order: 4
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { font: { family: 'Inter', size: 10 } }
+            },
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' Miliar';
+                }
+              }
+            }
+          },
+          scales: {
+            x: { stacked: true },
+            y: {
+              stacked: true,
+              title: { display: true, text: 'Miliar Rupiah', font: { family: 'Inter', weight: 'bold' } },
+              ticks: { callback: value => value + ' M' }
+            }
+          }
+        }
+      });
+    }
+
+    // --- Fitur Pembaruan Data Excel (SheetJS) ---
+    function handleExcelUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+
+          let uploadSuccess = false;
+
+          const masterSheet = workbook.Sheets['MASTER PNBP'];
+          if (masterSheet) {
+            const masterJson = XLSX.utils.sheet_to_json(masterSheet);
+
+            const newMaster = masterJson.map(row => {
+              const getField = (keys) => {
+                const matchedKey = Object.keys(row).find(k => keys.includes(k.toUpperCase().trim()));
+                return matchedKey ? row[matchedKey] : null;
+              };
+
+              const tahun = parseInt(getField(['TAHUN', 'YEAR'])) || 2020;
+              const noBulan = parseInt(getField(['NO. BULAN', 'NO BULAN', 'BULAN NUM', 'MONTH NUM'])) || 1;
+              const kodeEs1 = String(getField(['KODE ES1', 'KODE_ES1', 'ES1'])) || "";
+              const kodeSatker = String(getField(['KODE SATKER', 'KODE_SATKER', 'KDSATKER', 'SATKER'])) || "";
+              const akun = String(getField(['AKUN', 'KODE AKUN', 'KODE_AKUN'])) || "";
+              const nilai = parseFloat(getField(['NILAI', 'VALUE', 'JUMLAH', 'REALISASI'])) || 0.0;
+
+              const jenis = String(getField(['JENIS PNBP', 'JENIS_PNBP', 'KATEGORI'])) || "Lainnya";
+              const jMap = { "Lainnya": 0, "BLU": 1, "Perizinan": 2, "SDA": 3 };
+              const jenisId = jMap[jenis] !== undefined ? jMap[jenis] : 0;
+
+              return [tahun, noBulan, kodeEs1, kodeSatker, akun, nilai, jenisId];
+            });
+
+            if (newMaster.length > 0) {
+              masterData = newMaster;
+              uploadSuccess = true;
+            }
+          }
+
+          const capaianSheet = workbook.Sheets['Capaian PNBP 2026'];
+          if (capaianSheet) {
+            const capaianJson = XLSX.utils.sheet_to_json(capaianSheet, { range: 2 });
+
+            const newCapaian = [];
+            capaianJson.forEach(row => {
+              const getField = (keys) => {
+                const matchedKey = Object.keys(row).find(k => keys.includes(k.toUpperCase().trim()));
+                return matchedKey ? row[matchedKey] : null;
+              };
+
+              const es1 = String(getField(['KODE ES1', 'KODE_ES1', 'ES1'])) || "";
+              if (!es1 || es1 === 'null' || es1 === 'undefined') return;
+
+              const satker = String(getField(['KODE SATKER', 'KODE_SATKER', 'SATKER'])) || "";
+              const akun = String(getField(['KODE AKUN', 'KODE_AKUN', 'AKUN'])) || "";
+              const target = parseFloat(getField(['TARGET - SUMBER DATA TPNBP (RP)', 'TARGET', 'TARGET TPNBP'])) || 0.0;
+              const span = parseFloat(getField(['REALISASI - SUMBER DATA SPAN (RP)', 'SPAN', 'REALISASI SPAN', 'REALISASI'])) || 0.0;
+              const simponi = parseFloat(getField(['REALISASI - SUMBER DATA SIMPONI (RP)', 'SIMPONI', 'REALISASI SIMPONI'])) || 0.0;
+
+              newCapaian.push([es1, satker, akun, target, span, simponi]);
+            });
+
+            if (newCapaian.length > 0) {
+              capaian2026Data = newCapaian;
+              uploadSuccess = true;
+            }
+          }
+
+          if (uploadSuccess) {
+            const timestamp = new Date().toLocaleDateString('id-ID', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('data-update-indicator').innerHTML = `
+            <i class="fa-solid fa-check-circle" style="color:#48bb78;"></i> 
+            Sumber data: Diperbarui via Upload | Terakhir update: Hari Ini, ${timestamp} WIB
+          `;
+
+            const availableYears = [...new Set(masterData.map(d => d[0]))].sort();
+            const availableMonths = [...new Set(masterData.map(d => d[1]))].sort((a, b) => a - b);
+            activeFilters.tahun = [...availableYears];
+            activeFilters.bulan = [...availableMonths];
+
+            initFilterUI(availableYears, availableMonths);
+            syncFilters();
+            updateDashboard();
+
+            alert("Excel Berhasil Di-upload! Angka dan grafik dashboard telah terbarui otomatis.");
+          } else {
+            alert("Gagal membaca lembar kerja. Pastikan nama Sheet adalah 'MASTER PNBP' dan 'Capaian PNBP 2026'.");
+          }
+        } catch (err) {
+          console.error(err);
+          alert("Terjadi kesalahan saat mem-parse file Excel: " + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    // --- FITUR EKSPOR PDF ---
+    function exportToPDF() {
+      window.print();
+    }
+
+    // --- FITUR EKSPOR PPTX ---
+    function exportToPPTX() {
+      try {
+        let pptx = new PptxGenJS();
+        pptx.layout = 'LAYOUT_16x9';
+
+        const kkpPct = page2TotalTarget > 0 ? (page2TotalRealisasiSpan / page2TotalTarget) * 100 : 0;
+
+        // ================= SLIDE 1: COVER =================
+        let slide1 = pptx.addSlide();
+        slide1.background = { path: "assets/cover_bg.jpg" };
+
+        slide1.addShape(pptx.shapes.RECTANGLE, {
+          x: 0.5, y: 2.2, w: 9.0, h: 2.2,
+          fill: { color: "002060", transparency: 25 },
+          line: { color: "FFC000", width: 2 }
+        });
+
+        slide1.addText("Progres Kinerja PNBP KKP", {
+          x: 0.7, y: 2.4, w: 8.6, h: 0.8,
+          fontSize: 32, bold: true, color: "FFFFFF", fontFace: "Outfit"
+        });
+
+        slide1.addText("Laporan Monev Realisasi Capaian Tahunan (2020-2026)", {
+          x: 0.7, y: 3.2, w: 8.6, h: 0.5,
+          fontSize: 18, color: "FFC000", fontFace: "Outfit"
+        });
+
+        slide1.addText("Diekspor pada: " + new Date().toLocaleDateString('id-ID'), {
+          x: 0.7, y: 3.7, w: 8.6, h: 0.4,
+          fontSize: 12, italic: true, color: "FFFFFF", fontFace: "Inter"
+        });
+
+        slide1.addImage({ path: "assets/kkp_logo.png", x: 10.5, y: 0.5, w: 1.5, h: 1.5 });
+        slide1.addImage({ path: "assets/ribbon.png", x: 8.0, y: 5.5, w: 5.3, h: 2.0 });
+
+        // ================= SLIDE 2: HALAMAN 1 (REKAP 2020-2025) =================
+        let slide2 = pptx.addSlide();
+        slide2.addImage({ path: "assets/header_bg.png", x: 0, y: 0, w: 13.33, h: 1.2 });
+
+        slide2.addText("Rekap Realisasi PNBP KKP TA 2020 - 2025", {
+          x: 0.5, y: 0.2, w: 10.0, h: 0.5,
+          fontSize: 24, bold: true, color: "FFFFFF", fontFace: "Outfit"
+        });
+        slide2.addText("KEMENTERIAN KELAUTAN DAN PERIKANAN", {
+          x: 0.5, y: 0.7, w: 10.0, h: 0.3,
+          fontSize: 12, bold: true, color: "FFC000", fontFace: "Inter"
+        });
+        slide2.addImage({ path: "assets/kkp_logo.png", x: 12.0, y: 0.15, w: 0.9, h: 0.9 });
+
+        slide2.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: 0.5, y: 1.5, w: 3.8, h: 1.2, fill: { color: "F8F9FA" }, line: { color: "002060", width: 1.5 } });
+        slide2.addText("TOTAL REALISASI PNBP (Saring)", { x: 0.6, y: 1.6, w: 3.6, h: 0.3, fontSize: 10, bold: true, color: "718096" });
+        slide2.addText(formatIDR(page1TotalRealisasi), { x: 0.6, y: 1.9, w: 3.6, h: 0.5, fontSize: 18, bold: true, color: "002060" });
+
+        slide2.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: 4.7, y: 1.5, w: 3.8, h: 1.2, fill: { color: "F8F9FA" }, line: { color: "FFC000", width: 1.5 } });
+        slide2.addText("RATA-RATA YOY GROWTH", { x: 4.8, y: 1.6, w: 3.6, h: 0.3, fontSize: 10, bold: true, color: "718096" });
+        const avgGrowth = document.getElementById('kpi-yoy-growth').innerText;
+        slide2.addText(avgGrowth, { x: 4.8, y: 1.9, w: 3.6, h: 0.5, fontSize: 20, bold: true, color: "FFC000" });
+
+        slide2.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: 8.9, y: 1.5, w: 3.9, h: 1.2, fill: { color: "F8F9FA" }, line: { color: "2B78C5", width: 1.5 } });
+        slide2.addText("KATEGORI UTAMA", { x: 9.0, y: 1.6, w: 3.7, h: 0.3, fontSize: 10, bold: true, color: "718096" });
+        const topCat = document.getElementById('kpi-top-contrib').innerText;
+        slide2.addText(topCat, { x: 9.0, y: 1.9, w: 3.7, h: 0.5, fontSize: 16, bold: true, color: "2B78C5" });
+
+        slide2.addText("Ringkasan Realisasi per Tahun (Miliar Rp)", { x: 0.5, y: 3.0, w: 6.0, h: 0.3, fontSize: 14, bold: true, color: "002060" });
+
+        const rows = [];
+        rows.push([
+          { text: "Tahun", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF" } },
+          { text: "SDA", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } },
+          { text: "BLU", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } },
+          { text: "Lainnya", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } },
+          { text: "Total", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } }
+        ]);
+
+        const sortedYears = Object.keys(page1AnnualStats).map(y => parseInt(y)).sort((a, b) => a - b);
+        sortedYears.forEach(yr => {
+          const stats = page1AnnualStats[yr];
+          rows.push([
+            { text: String(yr), options: { bold: true } },
+            { text: (stats.SDA / 1e9).toFixed(2), options: { align: "right" } },
+            { text: (stats.BLU / 1e9).toFixed(2), options: { align: "right" } },
+            { text: (stats.Lainnya / 1e9).toFixed(2), options: { align: "right" } },
+            { text: (stats.total / 1e9).toFixed(2), options: { align: "right", bold: true, color: "002060" } }
+          ]);
+        });
+
+        slide2.addTable(rows, {
+          x: 0.5, y: 3.4, w: 12.3, h: 3.0,
+          border: { color: "DCEAF7", width: 1 },
+          fontSize: 11,
+          fontFace: "Inter",
+          fill: { color: "F8F9FA" }
+        });
+
+        // ================= SLIDE 3: HALAMAN 2 (CAPAIAN 2026 TABLE) =================
+        let slide3 = pptx.addSlide();
+        slide3.addImage({ path: "assets/header_bg.png", x: 0, y: 0, w: 13.33, h: 1.2 });
+
+        slide3.addText("Capaian Target Realisasi Eselon I TA 2026", {
+          x: 0.5, y: 0.2, w: 10.0, h: 0.5,
+          fontSize: 24, bold: true, color: "FFFFFF", fontFace: "Outfit"
+        });
+        slide3.addText("SUMBER DATA: SPAN (REALISASI) & TPNBP (TARGET)", {
+          x: 0.5, y: 0.7, w: 10.0, h: 0.3,
+          fontSize: 10, bold: true, color: "FFC000", fontFace: "Inter"
+        });
+        slide3.addImage({ path: "assets/kkp_logo.png", x: 12.0, y: 0.15, w: 0.9, h: 0.9 });
+
+        slide3.addShape(pptx.shapes.RECTANGLE, { x: 0.5, y: 1.4, w: 12.3, h: 0.6, fill: { color: "FFFDF0" }, line: { color: "FFC000", width: 1 } });
+        slide3.addText(`Realisasi PNBP KKP tahun berjalan s.d. 9 Juli 2026 adalah sebesar: ${formatTriliun(page2TotalRealisasiSpan)} (${kkpPct.toFixed(2)}% Capaian)`, {
+          x: 0.7, y: 1.5, w: 11.9, h: 0.4,
+          fontSize: 12, bold: true, color: "002060", fontFace: "Outfit", align: "center"
+        });
+
+        const es1Rows = [];
+        es1Rows.push([
+          { text: "No.", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "center" } },
+          { text: "Nama Eselon I", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF" } },
+          { text: "Target TPNBP (Rp)", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } },
+          { text: "Realisasi SPAN (Rp)", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } },
+          { text: "Capaian (%)", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "center" } }
+        ]);
+
+        const es1Sequence = [
+          { code: "3201", label: "SETJEN (Sekretariat Jenderal)" },
+          { code: "3202", label: "ITJEN (Inspektorat Jenderal)" },
+          { code: "3203", label: "DJPT (Direktorat Jenderal Perikanan Tangkap)" },
+          { code: "3204", label: "DJPB (Direktorat Jenderal Perikanan Budidaya)" },
+          { code: "3205", label: "DJPSDKP (Direktorat Jenderal PSDKP)" },
+          { code: "3206", label: "DJPDSPKP (Direktorat Jenderal PDSPKP)" },
+          { code: "3207", label: "DJPK (Ditjen Pengelolaan Kelautan)" },
+          { code: "3208", label: "DJPRL (Ditjen Penataan Ruang Laut)" },
+          { code: "3212", label: "BPPSDMKP (Badan Penyuluhan & Pengembangan)" },
+          { code: "3213", label: "BPPMHKP (Badan Mutu Karantina)" }
+        ];
+
+        es1Sequence.forEach((item, idx) => {
+          const stats = es1DataMap[item.code];
+          let pctVal = "-";
+          if (stats && stats.target > 0) pctVal = ((stats.span / stats.target) * 100).toFixed(2) + "%";
+          else if (stats && stats.span > 0) pctVal = "#DIV/0!";
+
+          const isEven = idx % 2 === 1;
+          const rowBg = isEven ? "DCEAF7" : "FFFFFF";
+
+          es1Rows.push([
+            { text: String(idx + 1), options: { align: "center", fill: { color: rowBg } } },
+            { text: item.label, options: { fill: { color: rowBg } } },
+            { text: stats ? formatIDR(stats.target, false) : "-", options: { align: "right", fill: { color: rowBg } } },
+            { text: stats ? formatIDR(stats.span, false) : "-", options: { align: "right", fill: { color: rowBg } } },
+            { text: pctVal, options: { align: "center", bold: true, color: "002060", fill: { color: rowBg } } }
+          ]);
+        });
+
+        es1Rows.push([
+          { text: "", options: { fill: { color: "002060" } } },
+          { text: "JUMLAH KKP", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF" } },
+          { text: formatIDR(page2TotalTarget, false), options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } },
+          { text: formatIDR(page2TotalRealisasiSpan, false), options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } },
+          { text: kkpPct.toFixed(2) + "%", options: { bold: true, fill: { color: "FFC000" }, color: "002060", align: "center" } }
+        ]);
+
+        slide3.addTable(es1Rows, {
+          x: 0.5, y: 2.1, w: 12.3, h: 4.8,
+          fontSize: 8.5,
+          fontFace: "Inter",
+          border: { color: "CBD5E0", width: 0.5 }
+        });
+
+        // ================= SLIDE 4: HISTORIS CHART SUMMARY =================
+        let slide4 = pptx.addSlide();
+        slide4.addImage({ path: "assets/header_bg.png", x: 0, y: 0, w: 13.33, h: 1.2 });
+
+        slide4.addText("Tren Realisasi Capaian PNBP KKP 2014 - 2026", {
+          x: 0.5, y: 0.2, w: 10.0, h: 0.5,
+          fontSize: 24, bold: true, color: "FFFFFF", fontFace: "Outfit"
+        });
+        slide4.addText("HISTORIS CAPAIAN PNBP (MILLIAR RUPIAH)", {
+          x: 0.5, y: 0.7, w: 10.0, h: 0.3,
+          fontSize: 10, bold: true, color: "FFC000", fontFace: "Inter"
+        });
+        slide4.addImage({ path: "assets/kkp_logo.png", x: 12.0, y: 0.15, w: 0.9, h: 0.9 });
+
+        slide4.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: 0.5, y: 1.5, w: 12.3, h: 5.0, fill: { color: "FFFFFF" }, line: { color: "DCEAF7", width: 1.5 } });
+
+        slide4.addImage({ path: "assets/graph_icon.png", x: 0.8, y: 1.8, w: 0.8, h: 0.8 });
+        slide4.addText("Tren perolehan PNBP KKP menunjukkan peningkatan yang kuat dalam periode jangka panjang. Tahun 2026 adalah tahun berjalan (s.d Juli).", {
+          x: 1.8, y: 1.8, w: 10.5, h: 0.8,
+          fontSize: 14, color: "002060", fontFace: "Outfit"
+        });
+
+        const histRows = [];
+        histRows.push([
+          { text: "Kategori", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF" } },
+          { text: "2014", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } },
+          { text: "2016", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } },
+          { text: "2018", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } },
+          { text: "2020", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } },
+          { text: "2022", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } },
+          { text: "2024", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } },
+          { text: "2025", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } },
+          { text: "2026*", options: { bold: true, fill: { color: "002060" }, color: "FFFFFF", align: "right" } }
+        ]);
+
+        histRows.push([
+          { text: "PNBP SDA (Perikanan)", options: { bold: true } },
+          { text: "214.4", options: { align: "right" } },
+          { text: "362.1", options: { align: "right" } },
+          { text: "448.8", options: { align: "right" } },
+          { text: "600.7", options: { align: "right" } },
+          { text: "1,193.0", options: { align: "right" } },
+          { text: "951.8", options: { align: "right" } },
+          { text: "1,026.5", options: { align: "right" } },
+          { text: "461.4", options: { align: "right", bold: true } }
+        ]);
+
+        histRows.push([
+          { text: "PNBP BLU (LPMUKP + Lain)", options: { bold: true } },
+          { text: "0.0", options: { align: "right" } },
+          { text: "0.0", options: { align: "right" } },
+          { text: "37.4", options: { align: "right" } },
+          { text: "66.5", options: { align: "right" } },
+          { text: "43.6", options: { align: "right" } },
+          { text: "182.6", options: { align: "right" } },
+          { text: "261.2", options: { align: "right" } },
+          { text: "52.0", options: { align: "right", bold: true } }
+        ]);
+
+        histRows.push([
+          { text: "PNBP Lainnya (Perizinan + Lain)", options: { bold: true } },
+          { text: "53.0", options: { align: "right" } },
+          { text: "191.3", options: { align: "right" } },
+          { text: "286.3", options: { align: "right" } },
+          { text: "190.1", options: { align: "right" } },
+          { text: "629.2", options: { align: "right" } },
+          { text: "1,073.8", options: { align: "right" } },
+          { text: "1,101.1", options: { align: "right" } },
+          { text: "698.1", options: { align: "right", bold: true } }
+        ]);
+
+        histRows.push([
+          { text: "TOTAL PNBP KKP", options: { bold: true, color: "002060", fill: { color: "DCEAF7" } } },
+          { text: "267.4 M", options: { align: "right", bold: true, fill: { color: "DCEAF7" } } },
+          { text: "553.4 M", options: { align: "right", bold: true, fill: { color: "DCEAF7" } } },
+          { text: "772.4 M", options: { align: "right", bold: true, fill: { color: "DCEAF7" } } },
+          { text: "857.3 M", options: { align: "right", bold: true, fill: { color: "DCEAF7" } } },
+          { text: "1,865.7 M", options: { align: "right", bold: true, fill: { color: "DCEAF7" } } },
+          { text: "2,208.3 M", options: { align: "right", bold: true, fill: { color: "DCEAF7" } } },
+          { text: "2,388.8 M", options: { align: "right", bold: true, fill: { color: "DCEAF7" } } },
+          { text: "1,211.5 M", options: { align: "right", bold: true, fill: { color: "DCEAF7" }, color: "002060" } }
+        ]);
+
+        slide4.addTable(histRows, {
+          x: 0.8, y: 2.8, w: 11.7, h: 3.2,
+          fontSize: 11,
+          fontFace: "Inter",
+          border: { color: "CBD5E0", width: 0.5 }
+        });
+
+        // ================= SLIDE 5: THANK YOU =================
+        let slide5 = pptx.addSlide();
+        slide5.background = { path: "assets/ending_bg.jpg" };
+
+        slide5.addShape(pptx.shapes.RECTANGLE, {
+          x: 2.0, y: 2.2, w: 9.3, h: 2.5,
+          fill: { color: "002060", transparency: 20 },
+          line: { color: "FFC000", width: 2 }
+        });
+
+        slide5.addText("Terima Kasih", {
+          x: 2.2, y: 2.5, w: 8.9, h: 0.9,
+          fontSize: 48, bold: true, color: "FFFFFF", fontFace: "Outfit", align: "center"
+        });
+
+        slide5.addText("Kementerian Kelautan dan Perikanan Republik Indonesia", {
+          x: 2.2, y: 3.5, w: 8.9, h: 0.5,
+          fontSize: 16, color: "FFC000", fontFace: "Inter", align: "center", bold: true
+        });
+
+        slide5.addText("Monev Realisasi Pendapatan Negara Bukan Pajak (PNBP)", {
+          x: 2.2, y: 3.9, w: 8.9, h: 0.4,
+          fontSize: 12, italic: true, color: "FFFFFF", fontFace: "Inter", align: "center"
+        });
+
+        pptx.writeFile({ fileName: 'Laporan_Capaian_PNBP_KKP_2026.pptx' })
+          .then(fileName => {
+            alert(`File PPTX berhasil dibuat dan diunduh: ${fileName}`);
+          })
+          .catch(err => {
+            console.error(err);
+            alert("Gagal melakukan export PPTX: " + err.message);
+          });
+
+      } catch (err) {
+        console.error(err);
+        alert("Terjadi kegagalan saat membuat PPTX: " + err.message);
+      }
+    }
+
+    // Generate dynamic insights
+    function generateInsights() {
+      // Tab 1 (Rekap) Insight
+      const filteredMaster = getFilteredMasterData();
+      if (filteredMaster.length === 0) {
+        document.getElementById('ai-insight-rekap').innerText = "Belum ada data untuk filter yang dipilih.";
+      } else {
+        let totals = { satker: {}, akun: {}, jenis: {} };
+        filteredMaster.forEach(d => {
+          let val = d[5] || 0;
+          let s = d[3];
+          let a = d[4];
+          let j = classifyRow(d).cat6;
+
+          if (!totals.satker[s]) totals.satker[s] = 0;
+          totals.satker[s] += val;
+
+          if (!totals.akun[a]) totals.akun[a] = 0;
+          totals.akun[a] += val;
+
+          if (!totals.jenis[j]) totals.jenis[j] = 0;
+          totals.jenis[j] += val;
+        });
+
+        const topSatkerCode = Object.keys(totals.satker).reduce((a, b) => totals.satker[a] > totals.satker[b] ? a : b, "");
+        const topAkunCode = Object.keys(totals.akun).reduce((a, b) => totals.akun[a] > totals.akun[b] ? a : b, "");
+        const topJenis = Object.keys(totals.jenis).reduce((a, b) => totals.jenis[a] > totals.jenis[b] ? a : b, "");
+
+        const topSatkerName = SATKER_MAP[topSatkerCode] || topSatkerCode;
+        const topAkunName = AKUN_MAP[topAkunCode] || topAkunCode;
+
+        const textRekap = `<strong>Analisis Ringkas:</strong> Berdasarkan data terpilih (Tahun ${activeFilters.tahun.join(', ')}), kontributor terbesar berasal dari jenis <strong>${topJenis}</strong>, disumbangkan mayoritas oleh <strong>Satker ${topSatkerName}</strong> melalui <strong>Akun ${topAkunName}</strong>.`;
+        document.getElementById('ai-insight-rekap').innerHTML = textRekap;
+      }
+
+      // Tab 2 (Capaian) Insight
+      const filteredCapaian = capaian2026Data.filter(d => {
+        const passEs1 = !activeFilters.es1 || d[0] === activeFilters.es1;
+        const passSatker = !activeFilters.satker || d[1] === activeFilters.satker;
+        const passAkun = !activeFilters.akun || d[2] === activeFilters.akun;
+        return passEs1 && passSatker && passAkun;
+      });
+
+      if (filteredCapaian.length === 0) {
+        document.getElementById('ai-insight-capaian').innerText = "Belum ada data untuk filter yang dipilih.";
+      } else {
+        let totals = { satker: {}, akun: {}, jenis: {} };
+        filteredCapaian.forEach(d => {
+          let val = d[4] || 0; // SPAN realisasi
+          let s = d[1];
+          let a = d[2];
+          let j = classifyCapaianRow(d).cat6;
+
+          if (!totals.satker[s]) totals.satker[s] = 0;
+          totals.satker[s] += val;
+
+          if (!totals.akun[a]) totals.akun[a] = 0;
+          totals.akun[a] += val;
+
+          if (!totals.jenis[j]) totals.jenis[j] = 0;
+          totals.jenis[j] += val;
+        });
+
+        const topSatkerCode = Object.keys(totals.satker).reduce((a, b) => totals.satker[a] > totals.satker[b] ? a : b, "");
+        const topAkunCode = Object.keys(totals.akun).reduce((a, b) => totals.akun[a] > totals.akun[b] ? a : b, "");
+        const topJenis = Object.keys(totals.jenis).reduce((a, b) => totals.jenis[a] > totals.jenis[b] ? a : b, "");
+
+        const topSatkerName = SATKER_MAP[topSatkerCode] || topSatkerCode;
+        const topAkunName = AKUN_MAP[topAkunCode] || topAkunCode;
+
+        const textCapaian = `<strong>Analisis Ringkas:</strong> Pada tahun berjalan 2026, sumber PNBP terbesar berasal dari <strong>${topJenis}</strong>, dengan pencapaian tertinggi dari <strong>Satker ${topSatkerName}</strong> (Akun ${topAkunName}).`;
+        document.getElementById('ai-insight-capaian').innerHTML = textCapaian;
+      }
+    }
+
+    // Render "REALISASI PNBP KKP PER AKUN" Table
+    function renderCapaianAkunTable() {
+      // Filter capaian data first
+      const filteredCapaian = capaian2026Data.filter(d => {
+        const passEs1 = !activeFilters.es1 || d[0] === activeFilters.es1;
+        const passSatker = !activeFilters.satker || d[1] === activeFilters.satker;
+        const passAkun = !activeFilters.akun || d[2] === activeFilters.akun;
+        return passEs1 && passSatker && passAkun;
+      });
+
+      let catData = {
+        'SDA Perikanan': { target: 0, real: 0 },
+        'SDA Sedimentasi': { target: 0, real: 0 },
+        'BLU LPMUKP': { target: 0, real: 0 },
+        'BLU Lainnya': { target: 0, real: 0 },
+        'PNBP Perizinan': { target: 0, real: 0 },
+        'PNBP Lainnya': { target: 0, real: 0 }
+      };
+
+      filteredCapaian.forEach(d => {
+        const cat6 = classifyCapaianRow(d).cat6;
+        if (catData[cat6]) {
+          catData[cat6].target += (d[3] || 0);
+          catData[cat6].real += (d[4] || 0);
+        }
+      });
+
+      const t = catData;
+      const totalTarget = Object.values(t).reduce((s, c) => s + c.target, 0);
+      const totalReal = Object.values(t).reduce((s, c) => s + c.real, 0);
+      const totalPct = totalTarget ? (totalReal / totalTarget * 100).toFixed(2) + '%' : '0.00%';
+
+      const sdaTarget = t['SDA Perikanan'].target + t['SDA Sedimentasi'].target;
+      const sdaReal = t['SDA Perikanan'].real + t['SDA Sedimentasi'].real;
+      const bluTarget = t['BLU LPMUKP'].target + t['BLU Lainnya'].target;
+      const bluReal = t['BLU LPMUKP'].real + t['BLU Lainnya'].real;
+      const lainnyaTarget = t['PNBP Perizinan'].target + t['PNBP Lainnya'].target;
+      const lainnyaReal = t['PNBP Perizinan'].real + t['PNBP Lainnya'].real;
+
+      function getPct(r, tg) {
+        return tg ? (r / tg * 100).toFixed(2) + '%' : '0.00%';
+      }
+
+      const tbody = document.getElementById('akun-capaian-tbody');
+      tbody.innerHTML = `
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">421<br>SDA</td>
+        <td>SDA Perikanan</td>
+        <td class="text-right">${formatIDR(t['SDA Perikanan'].target, false)}</td>
+        <td class="text-right">${t['SDA Perikanan'].real === 0 ? '-' : formatIDR(t['SDA Perikanan'].real, false)}</td>
+        <td class="text-center">${getPct(t['SDA Perikanan'].real, t['SDA Perikanan'].target)}</td>
+      </tr>
+      <tr>
+        <td>SDA Sedimentasi</td>
+        <td class="text-right">${formatIDR(t['SDA Sedimentasi'].target, false)}</td>
+        <td class="text-right">${t['SDA Sedimentasi'].real === 0 ? '-' : formatIDR(t['SDA Sedimentasi'].real, false)}</td>
+        <td class="text-center">${getPct(t['SDA Sedimentasi'].real, t['SDA Sedimentasi'].target)}</td>
+      </tr>
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">424<br>BLU</td>
+        <td>BLU LPMUKP</td>
+        <td class="text-right">${formatIDR(t['BLU LPMUKP'].target, false)}</td>
+        <td class="text-right">${t['BLU LPMUKP'].real === 0 ? '-' : formatIDR(t['BLU LPMUKP'].real, false)}</td>
+        <td class="text-center">${getPct(t['BLU LPMUKP'].real, t['BLU LPMUKP'].target)}</td>
+      </tr>
+      <tr>
+        <td>BLU Lainnya</td>
+        <td class="text-right">${formatIDR(t['BLU Lainnya'].target, false)}</td>
+        <td class="text-right">${t['BLU Lainnya'].real === 0 ? '-' : formatIDR(t['BLU Lainnya'].real, false)}</td>
+        <td class="text-center">${getPct(t['BLU Lainnya'].real, t['BLU Lainnya'].target)}</td>
+      </tr>
+      <tr>
+        <td rowspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">425<br>Lainnya</td>
+        <td>PNBP Perizinan</td>
+        <td class="text-right">${formatIDR(t['PNBP Perizinan'].target, false)}</td>
+        <td class="text-right">${t['PNBP Perizinan'].real === 0 ? '-' : formatIDR(t['PNBP Perizinan'].real, false)}</td>
+        <td class="text-center">${getPct(t['PNBP Perizinan'].real, t['PNBP Perizinan'].target)}</td>
+      </tr>
+      <tr>
+        <td>PNBP Lainnya</td>
+        <td class="text-right">${formatIDR(t['PNBP Lainnya'].target, false)}</td>
+        <td class="text-right">${t['PNBP Lainnya'].real === 0 ? '-' : formatIDR(t['PNBP Lainnya'].real, false)}</td>
+        <td class="text-center">${getPct(t['PNBP Lainnya'].real, t['PNBP Lainnya'].target)}</td>
+      </tr>
+      <tr class="total-row">
+        <td colspan="2" class="text-center">Total</td>
+        <td class="text-right">${formatIDR(totalTarget, false)}</td>
+        <td class="text-right">${formatIDR(totalReal, false)}</td>
+        <td class="text-center">${totalPct}</td>
+      </tr>
+      <tr>
+        <td colspan="5" style="font-style: italic; background-color: #f7fafc;">Sesuai Kode Billing Kemenkeu</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">421 - SDA</td>
+        <td class="text-right">${formatIDR(sdaTarget, false)}</td>
+        <td class="text-right">${formatIDR(sdaReal, false)}</td>
+        <td class="text-center">${getPct(sdaReal, sdaTarget)}</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">424 - BLU</td>
+        <td class="text-right">${formatIDR(bluTarget, false)}</td>
+        <td class="text-right">${formatIDR(bluReal, false)}</td>
+        <td class="text-center">${getPct(bluReal, bluTarget)}</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="text-center" style="font-weight:700; color:var(--medium-blue);">425 - Lainnya</td>
+        <td class="text-right">${formatIDR(lainnyaTarget, false)}</td>
+        <td class="text-right">${formatIDR(lainnyaReal, false)}</td>
+        <td class="text-center">${getPct(lainnyaReal, lainnyaTarget)}</td>
+      </tr>
+      <tr class="total-row">
+        <td colspan="2" class="text-center">Total</td>
+        <td class="text-right">${formatIDR(totalTarget, false)}</td>
+        <td class="text-right">${formatIDR(totalReal, false)}</td>
+        <td class="text-center">${totalPct}</td>
+      </tr>
+    `;
+    }
+  </script>
+
+
+</body>
+
+</html>
